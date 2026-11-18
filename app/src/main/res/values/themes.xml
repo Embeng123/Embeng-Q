@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.UsqueVpn" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.EmbengQ" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">#F2A766</item>
         <item name="colorOnPrimary">#4E2B17</item>
         <item name="colorPrimaryContainer">#FFEEE0</item>
