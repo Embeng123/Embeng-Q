@@ -2,11 +2,11 @@ apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
 android {
-    namespace 'com.warp.usque'
+    namespace 'com.embeng.q'
     compileSdk 34
 
     defaultConfig {
-        applicationId 'com.warp.usque'
+        applicationId 'com.embeng.q'
         minSdk 24
         targetSdk 34
         versionCode 3
