@@ -43,7 +43,6 @@ class MainActivity : Activity() {
     private val configFile by lazy { File(filesDir, "config.json") }
 
     private lateinit var endpointInput: TextInputEditText
-    private lateinit var portInput: TextInputEditText
     private lateinit var sniInput: TextInputEditText
     private lateinit var statusBanner: TextView
     private lateinit var statusText: TextView
@@ -68,7 +67,7 @@ class MainActivity : Activity() {
     private lateinit var saveNewProfileBtn: MaterialButton
     private lateinit var overwriteProfileBtn: MaterialButton
     private lateinit var deleteProfileBtn: MaterialButton
-    private lateinit var languageZhButton: MaterialButton
+    private lateinit var languageIdButton: MaterialButton
     private lateinit var languageEnButton: MaterialButton
     private lateinit var selectAllAppsBtn: MaterialButton
     private lateinit var clearAllAppsBtn: MaterialButton
@@ -99,7 +98,7 @@ class MainActivity : Activity() {
     private val bg = Color.rgb(255, 248, 242)
     private val surface = Color.rgb(255, 255, 255)
     private val surface2 = Color.rgb(255, 238, 224)
-    private val primary = Color.rgb(246, 196, 155) // soft orange / 淡橘色
+    private val primary = Color.rgb(246, 196, 155) // soft orange / oranye muda
     private val darkAccent = Color.rgb(205, 126, 73)
     private val mango = Color.rgb(255, 224, 195)
     private val onPrimary = Color.rgb(82, 49, 28)
@@ -145,7 +144,7 @@ class MainActivity : Activity() {
         return super.dispatchTouchEvent(ev)
     }
 
-    private fun tr(zh: String, en: String): String = if (useEnglish) en else zh
+    private fun tr(id: String, en: String): String = if (useEnglish) en else id
     private fun setLanguage(en: Boolean) {
         useEnglish = en
         prefs.edit().putBoolean("useEnglish", useEnglish).apply()
@@ -187,9 +186,9 @@ class MainActivity : Activity() {
             (child.parent as? ViewGroup)?.removeView(child)
             addView(child)
         }
-        val overviewTab = tabButton(tr("总览", "Overview"))
-        val configTab = tabButton(tr("配置", "Config"))
-        val appsTab = tabButton(tr("应用", "Apps"))
+        val overviewTab = tabButton(tr("Beranda", "Overview"))
+        val configTab = tabButton(tr("Konfigurasi", "Config"))
+        val appsTab = tabButton(tr("Aplikasi", "Apps"))
         val tabsList = listOf(overviewTab, configTab, appsTab)
         tabsList.forEachIndexed { index, b ->
             tabs.addView(b, LinearLayout.LayoutParams(0, dp(36), 1f).apply { if (index < 2) rightMargin = dp(8) })
@@ -198,7 +197,7 @@ class MainActivity : Activity() {
         val homePage = buildHomePage()
         val configPage = buildConfigPage()
         val appsPage = buildAppsPage()
-        val titles = listOf("Usque", tr("连接配置", "Connection Config"), tr("选择应用", "Select Apps"))
+        val titles = listOf("Usque", tr("Konfigurasi Koneksi", "Connection Config"), tr("Pilih Aplikasi", "Select Apps"))
         val pages = listOf(homePage, configPage, appsPage)
         fun showIndex(index: Int) {
             val safe = index.coerceIn(0, pages.lastIndex)
@@ -220,8 +219,7 @@ class MainActivity : Activity() {
         defaultBtn.setOnClickListener {
             val defaultEndpoint = Usqueandroid.getDefaultEndpoint(configFile.absolutePath)
             endpointInput.setText(parseEndpointHost(defaultEndpoint))
-            portInput.setText(parseEndpointPort(defaultEndpoint, 443).toString())
-            refreshState(tr("已读取默认 endpoint", "Default endpoint loaded"))
+            refreshState(tr("Endpoint default dimuat", "Default endpoint loaded"))
         }
         saveNewProfileBtn.setOnClickListener { saveAsNewProfile() }
         overwriteProfileBtn.setOnClickListener { overwriteSelectedProfile() }
@@ -229,7 +227,6 @@ class MainActivity : Activity() {
         connectButton.setOnClickListener { if (vpnRunning) disconnectVpn() else connectVpn() }
         sniInput.addTextChangedListener(dirtyWatcher())
         endpointInput.addTextChangedListener(dirtyWatcher())
-        portInput.addTextChangedListener(dirtyWatcher())
         appSearchInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { refreshAppList() }
@@ -252,14 +249,14 @@ class MainActivity : Activity() {
             setTypeface(null, Typeface.BOLD)
         }
         statusBanner = TextView(this).apply {
-            text = tr("未连接", "Disconnected")
+            text = tr("Tidak Terhubung", "Disconnected")
             textSize = 28f
             setTextColor(onPrimary)
             setTypeface(null, Typeface.BOLD)
             setPadding(0, dp(6), 0, 0)
         }
         statusText = TextView(this).apply {
-            text = tr("状态: 未连接", "Status: Disconnected")
+            text = tr("Status: Tidak Terhubung", "Status: Disconnected")
             textSize = 14f
             setTextColor(subText)
             setPadding(0, dp(2), 0, dp(2))
@@ -276,7 +273,7 @@ class MainActivity : Activity() {
             setPadding(dp(10), 0, dp(10), 0)
         }
         connectButton = MaterialButton(this).apply {
-            text = tr("连接 VPN", "Connect VPN")
+            text = tr("Hubungkan VPN", "Connect VPN")
             textSize = 15f
             gravity = Gravity.CENTER
             setSingleLine(false)
@@ -298,13 +295,13 @@ class MainActivity : Activity() {
         hero.addView(heroBox)
         content.addView(hero, LinearLayout.LayoutParams(-1, -2))
 
-        content.addView(sectionTitle(tr("代理模式", "Proxy Mode")))
+        content.addView(sectionTitle(tr("Mode Proxy", "Proxy Mode")))
         val modeCard = card()
         val modeBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(10), dp(16), dp(10)) }
-        modeValue = TextView(this).apply { text = tr("全局模式", "Global Mode"); textSize = 18f; setTextColor(textColor); setTypeface(null, Typeface.BOLD) }
-        modeHint = TextView(this).apply { text = tr("所有应用走 VPN。切到分应用后，仅“应用”页勾选的应用走 VPN。", "All apps use VPN. In split mode, only selected apps use VPN."); textSize = 14f; setTextColor(subText); setPadding(0, dp(4), 0, dp(6)) }
+        modeValue = TextView(this).apply { text = tr("Mode Global", "Global Mode"); textSize = 18f; setTextColor(textColor); setTypeface(null, Typeface.BOLD) }
+        modeHint = TextView(this).apply { text = tr("Semua aplikasi lewat VPN. Di mode pisah, hanya aplikasi yang dipilih di halaman “Aplikasi” yang lewat VPN.", "All apps use VPN. In split mode, only selected apps use VPN."); textSize = 14f; setTextColor(subText); setPadding(0, dp(4), 0, dp(6)) }
         splitModeSwitch = MaterialSwitch(this).apply {
-            text = tr("启用分应用代理", "Enable split tunneling")
+            text = tr("Aktifkan split tunneling", "Enable split tunneling")
             textSize = 16f
             setTextColor(textColor)
             setPadding(0, dp(2), 0, 0)
@@ -322,14 +319,14 @@ class MainActivity : Activity() {
         ipv6Text = TextView(this)
         configStateText = TextView(this)
         logText = TextView(this).apply {
-            text = tr("点连接即可。首次连接会自动注册并启动 VPN。", "Tap Connect. First launch will register automatically and start VPN.")
+            text = tr("Ketuk Hubungkan. Koneksi pertama akan mendaftar otomatis dan memulai VPN.", "Tap Connect. First launch will register automatically and start VPN.")
         }
 
         val languageCard = card()
         val languageBox = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(16), dp(12), dp(16), dp(12)) }
-        languageZhButton = secondaryButton("中文").apply { setOnClickListener { setLanguage(false) } }
+        languageIdButton = secondaryButton("Indonesia").apply { setOnClickListener { setLanguage(false) } }
         languageEnButton = secondaryButton("English").apply { setOnClickListener { setLanguage(true) } }
-        languageBox.addView(languageZhButton, LinearLayout.LayoutParams(0, dp(50), 1f).apply { rightMargin = dp(10) })
+        languageBox.addView(languageIdButton, LinearLayout.LayoutParams(0, dp(50), 1f).apply { rightMargin = dp(10) })
         languageBox.addView(languageEnButton, LinearLayout.LayoutParams(0, dp(50), 1f))
         languageCard.addView(languageBox)
         content.addView(languageCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(28) })
@@ -338,19 +335,19 @@ class MainActivity : Activity() {
 
     private fun buildConfigPage(): View {
         val content = pageContent()
-        content.addView(sectionHeader(tr("连接配置", "Connection Config"), tr("多组方案一键切换。", "Switch between saved profiles quickly.")))
+        content.addView(sectionHeader(tr("Konfigurasi Koneksi", "Connection Config"), tr("Beralih antar profil tersimpan dengan cepat.", "Switch between saved profiles quickly.")))
 
         val profileCard = card()
         val profileBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(10)) }
         profileSpinner = Spinner(this).apply { background = round(surface2, dp(16), outline); setPadding(dp(10), 0, dp(10), 0) }
-        profileNameInput = input(tr("配置名称", "Profile Name"), tr("例如：Visa 500 / Cloudflare 443", "e.g. Visa 500 / Cloudflare 443"))
-        saveNewProfileBtn = secondaryButton(tr("保存为新方案", "Save as New"))
-        overwriteProfileBtn = secondaryButton(tr("覆盖当前方案", "Overwrite Current"))
-        deleteProfileBtn = secondaryButton(tr("删除选中方案", "Delete Profile"))
-        profileBox.addView(TextView(this).apply { text = tr("配置方案", "Profiles"); textSize = 18f; setTextColor(textColor); setTypeface(null, Typeface.BOLD) })
-        profileBox.addView(TextView(this).apply { text = tr("保存当前 SNI / Endpoint / Port，后面可以直接切换。", "Save current SNI / Endpoint / Port for quick switching."); textSize = 12f; setTextColor(subText); setPadding(0, dp(2), 0, dp(6)) })
+        profileNameInput = input(tr("Nama Profil", "Profile Name"), tr("contoh: Visa 443 / Cloudflare 443", "e.g. Visa 443 / Cloudflare 443"))
+        saveNewProfileBtn = secondaryButton(tr("Simpan sebagai Baru", "Save as New"))
+        overwriteProfileBtn = secondaryButton(tr("Timpa Profil Saat Ini", "Overwrite Current"))
+        deleteProfileBtn = secondaryButton(tr("Hapus Profil", "Delete Profile"))
+        profileBox.addView(TextView(this).apply { text = tr("Profil", "Profiles"); textSize = 18f; setTextColor(textColor); setTypeface(null, Typeface.BOLD) })
+        profileBox.addView(TextView(this).apply { text = tr("Simpan SNI / Endpoint saat ini untuk beralih dengan cepat.", "Save current SNI / Endpoint for quick switching."); textSize = 12f; setTextColor(subText); setPadding(0, dp(2), 0, dp(6)) })
         profileBox.addView(profileSpinner, LinearLayout.LayoutParams(-1, dp(42)))
-        profileBox.addView(inputWrap(tr("配置名称", "Profile Name"), profileNameInput), LinearLayout.LayoutParams(-1, dp(70)).apply { topMargin = dp(5) })
+        profileBox.addView(inputWrap(tr("Nama Profil", "Profile Name"), profileNameInput), LinearLayout.LayoutParams(-1, dp(70)).apply { topMargin = dp(5) })
         val profileActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         profileActions.addView(overwriteProfileBtn, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(8) })
         profileActions.addView(saveNewProfileBtn, LinearLayout.LayoutParams(0, dp(42), 1f))
@@ -359,16 +356,14 @@ class MainActivity : Activity() {
         profileCard.addView(profileBox)
         content.addView(profileCard)
 
-        content.addView(sectionTitle(tr("当前连接参数", "Current Connection")))
+        content.addView(sectionTitle(tr("Koneksi Saat Ini", "Current Connection")))
         val config = card()
         val configBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(8), dp(14), dp(8)) }
         sniInput = input("SNI", "www.visa.cn")
         endpointInput = input("Endpoint IP", "162.159.198.2")
-        portInput = input("Connect Port", "500")
-        defaultBtn = secondaryButton(tr("读取默认 endpoint", "Load Default Endpoint"))
+        defaultBtn = secondaryButton(tr("Muat Endpoint Default", "Load Default Endpoint"))
         configBox.addView(compactInputWrap("SNI", sniInput))
         configBox.addView(compactInputWrap("Endpoint IP", endpointInput))
-        configBox.addView(compactInputWrap("Connect Port", portInput))
         configBox.addView(defaultBtn, LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(3) })
         config.addView(configBox)
         content.addView(config)
@@ -377,17 +372,17 @@ class MainActivity : Activity() {
 
     private fun buildAppsPage(): View {
         val content = pageContent()
-        content.addView(sectionHeader(tr("选择应用", "Select Apps"), tr("这里只负责选择应用；是否启用分应用代理在“总览”页切换。", "Only choose apps here. Enable split tunneling on Overview.")))
+        content.addView(sectionHeader(tr("Pilih Aplikasi", "Select Apps"), tr("Di sini hanya memilih aplikasi. Aktifkan split tunneling di Beranda.", "Only choose apps here. Enable split tunneling on Overview.")))
         appSection = card()
         val appBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(10)) }
-        appSearchInput = input(tr("搜索应用", "Search Apps"), tr("应用名或包名", "App name or package"))
-        appCountText = infoLine(tr("已选择 0 个应用", "0 apps selected"))
+        appSearchInput = input(tr("Cari Aplikasi", "Search Apps"), tr("Nama aplikasi atau paket", "App name or package"))
+        appCountText = infoLine(tr("0 aplikasi dipilih", "0 apps selected"))
         appListContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        appBox.addView(inputWrap(tr("搜索", "Search"), appSearchInput))
+        appBox.addView(inputWrap(tr("Cari", "Search"), appSearchInput))
         appBox.addView(appCountText)
         val appActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        selectAllAppsBtn = secondaryButton(tr("全选", "Select All")).apply { setOnClickListener { selectAllVisibleApps() } }
-        clearAllAppsBtn = secondaryButton(tr("全不选", "Select None")).apply { setOnClickListener { clearAllVisibleApps() } }
+        selectAllAppsBtn = secondaryButton(tr("Pilih Semua", "Select All")).apply { setOnClickListener { selectAllVisibleApps() } }
+        clearAllAppsBtn = secondaryButton(tr("Batalkan Semua", "Select None")).apply { setOnClickListener { clearAllVisibleApps() } }
         appActions.addView(selectAllAppsBtn, LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(8) })
         appActions.addView(clearAllAppsBtn, LinearLayout.LayoutParams(0, dp(40), 1f))
         appBox.addView(appActions, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(4) })
@@ -528,7 +523,7 @@ class MainActivity : Activity() {
     }
     private fun markDirty() { configDirty = true; updateConfigState() }
     private fun updateConfigState(extra: String = "") {
-        val base = if (configDirty) tr("配置: 未保存，连接时会自动保存", "Config: unsaved, will auto-save on connect") else tr("配置: 已保存", "Config: saved")
+        val base = if (configDirty) tr("Konfigurasi: belum disimpan, otomatis disimpan saat terhubung", "Config: unsaved, will auto-save on connect") else tr("Konfigurasi: tersimpan", "Config: saved")
         configStateText.text = if (extra.isBlank()) base else "$base · $extra"
     }
     private fun saveInputs() {
@@ -549,12 +544,11 @@ class MainActivity : Activity() {
             val arr = JSONArray(raw)
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                profiles[o.getString("name")] = Triple(o.optString("sni", "www.visa.cn"), o.optString("endpoint", "162.159.198.2"), o.optInt("port", 500))
+                profiles[o.getString("name")] = Triple(o.optString("sni", "www.visa.cn"), o.optString("endpoint", "162.159.198.2"), 443)
             }
         }
         if (profiles.isEmpty()) {
-            profiles["默认 500"] = Triple("www.visa.cn", "162.159.198.2", 500)
-            profiles["备用 443"] = Triple("www.visa.cn", "162.159.198.2", 443)
+            profiles["Utama 443"] = Triple("www.visa.cn", "162.159.198.2", 443)
             persistProfiles()
         }
         refreshProfileSpinner()
@@ -608,9 +602,9 @@ class MainActivity : Activity() {
         val name = currentProfileName().takeIf { it.isNotBlank() } ?: profiles.keys.firstOrNull().orEmpty()
         val p = profiles[name]
         currentProfileText.text = if (p != null) {
-            tr("当前配置：$name · SNI ${p.first} · ${p.second}:${p.third}", "Current: $name · SNI ${p.first} · ${p.second}:${p.third}")
+            tr("Profil saat ini: $name · SNI ${p.first} · ${p.second}:${p.third}", "Current: $name · SNI ${p.first} · ${p.second}:${p.third}")
         } else {
-            tr("当前配置：未选择", "Current profile: none")
+            tr("Profil saat ini: tidak ada", "Current profile: none")
         }
     }
     private fun syncConfigProfileSpinner(name: String) {
@@ -623,20 +617,19 @@ class MainActivity : Activity() {
         if (!profiles.containsKey(name)) return
         if (vpnRunning) {
             refreshHomeProfileSpinner()
-            toast(tr("请先断开 VPN，再切换配置", "Disconnect VPN before switching profile"))
+            toast(tr("Putuskan VPN dulu sebelum mengganti profil", "Disconnect VPN before switching profile"))
             return
         }
         applyProfileToInputs(name, persist = true)
         setCurrentProfileName(name)
         syncConfigProfileSpinner(name)
         updateCurrentProfileUi()
-        toast(tr("已切换配置：$name", "Profile switched: $name"))
+        toast(tr("Profil diganti: $name", "Profile switched: $name"))
     }
     private fun applyProfileToInputs(name: String, persist: Boolean) {
         val p = profiles[name] ?: return
         sniInput.setText(p.first)
         endpointInput.setText(p.second)
-        portInput.setText(p.third.toString())
         profileNameInput.setText(name)
         if (persist) { markDirty(); saveInputs() }
     }
@@ -644,16 +637,16 @@ class MainActivity : Activity() {
         val base = profileNameInput.text?.toString().orEmpty().trim().ifBlank { normalizedEndpoint() }
         val name = uniqueProfileName(base)
         profiles[name] = Triple(sniInput.text?.toString().orEmpty().ifBlank { "www.visa.cn" }, normalizedEndpointHost(), normalizedPort())
-        persistProfiles(); refreshProfileSpinner(); profileNameInput.setText(name); syncConfigProfileSpinner(name); toast(tr("已保存为新方案：$name", "Saved as new profile: $name"))
+        persistProfiles(); refreshProfileSpinner(); profileNameInput.setText(name); syncConfigProfileSpinner(name); toast(tr("Disimpan sebagai profil baru: $name", "Saved as new profile: $name"))
     }
     private fun overwriteSelectedProfile() {
         val selected = selectedProfileName()
         val name = selected.ifBlank { profileNameInput.text?.toString().orEmpty().trim() }
-        if (name.isBlank()) return toast(tr("请先选择一个方案", "Select a profile first"))
+        if (name.isBlank()) return toast(tr("Pilih profil dulu", "Select a profile first"))
         profiles[name] = Triple(sniInput.text?.toString().orEmpty().ifBlank { "www.visa.cn" }, normalizedEndpointHost(), normalizedPort())
         persistProfiles(); refreshProfileSpinner(); profileNameInput.setText(name); syncConfigProfileSpinner(name)
         if (currentProfileName() == name) { setCurrentProfileName(name); refreshHomeProfileSpinner(); updateCurrentProfileUi() }
-        toast(tr("已覆盖当前方案：$name", "Current profile overwritten: $name"))
+        toast(tr("Profil saat ini ditimpa: $name", "Current profile overwritten: $name"))
     }
     private fun loadProfileForEditing(name: String) {
         if (!profiles.containsKey(name)) return
@@ -670,14 +663,13 @@ class MainActivity : Activity() {
         if (name.isBlank()) return
         profiles.remove(name)
         if (currentProfileName() == name) setCurrentProfileName(profiles.keys.firstOrNull().orEmpty())
-        persistProfiles(); refreshProfileSpinner(); toast("已删除：$name")
+        persistProfiles(); refreshProfileSpinner(); toast(tr("Dihapus: $name", "Deleted: $name"))
     }
 
     private fun loadSavedState() {
         loadProfiles()
-        val saved = prefs.getString("endpoint", "162.159.198.2:500") ?: "162.159.198.2:500"
+        val saved = prefs.getString("endpoint", "162.159.198.2:443") ?: "162.159.198.2:443"
         endpointInput.setText(parseEndpointHost(saved))
-        portInput.setText(prefs.getInt("connectPort", parseEndpointPort(saved, 500)).toString())
         sniInput.setText(prefs.getString("sni", "www.visa.cn") ?: "www.visa.cn")
         selectedPackages.clear(); selectedPackages.addAll(prefs.getStringSet("selectedPackages", emptySet()) ?: emptySet())
         splitModeSwitch.isChecked = prefs.getBoolean("splitMode", false)
@@ -689,7 +681,7 @@ class MainActivity : Activity() {
     private fun ensureAppsLoaded() {
         if (appsLoaded) return
         appsLoaded = true
-        appCountText.text = tr("正在读取应用列表…", "Loading app list…")
+        appCountText.text = tr("Memuat daftar aplikasi…", "Loading app list…")
         loadInstalledApps()
     }
     private fun loadInstalledApps() {
@@ -712,11 +704,11 @@ class MainActivity : Activity() {
     }
     private fun refreshAppList() {
         if (!::appListContainer.isInitialized) return
-        if (!appsLoaded) { appCountText.text = tr("进入应用页后读取应用列表", "App list loads when opening Apps"); return }
+        if (!appsLoaded) { appCountText.text = tr("Daftar aplikasi dimuat saat membuka Aplikasi", "App list loads when opening Apps"); return }
         appListContainer.removeAllViews()
         val visible = visibleApps()
         visible.forEach { app -> appListContainer.addView(appRow(app), LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(5) }) }
-        appCountText.text = if (splitModeSwitch.isChecked) tr("已选择 ${selectedPackages.size} 个 · 显示 ${visible.size}/${allApps.size}", "Selected ${selectedPackages.size} · Showing ${visible.size}/${allApps.size}") else tr("全局模式：选择暂不生效 · 显示 ${visible.size}/${allApps.size}", "Global mode: selections inactive · Showing ${visible.size}/${allApps.size}")
+        appCountText.text = if (splitModeSwitch.isChecked) tr("Dipilih ${selectedPackages.size} · Ditampilkan ${visible.size}/${allApps.size}", "Selected ${selectedPackages.size} · Showing ${visible.size}/${allApps.size}") else tr("Mode global: pilihan tidak aktif · Ditampilkan ${visible.size}/${allApps.size}", "Global mode: selections inactive · Showing ${visible.size}/${allApps.size}")
         updateModeUi()
     }
     private fun visibleApps(): List<AppEntry> {
@@ -730,13 +722,13 @@ class MainActivity : Activity() {
         if (!appsLoaded) return
         selectedPackages.addAll(visibleApps().map { it.packageName })
         markDirty(); saveSelectedApps(); refreshAppList()
-        toast(tr("已全选当前列表", "Selected all visible apps"))
+        toast(tr("Semua aplikasi terlihat dipilih", "Selected all visible apps"))
     }
     private fun clearAllVisibleApps() {
         if (!appsLoaded) return
         selectedPackages.removeAll(visibleApps().map { it.packageName }.toSet())
         markDirty(); saveSelectedApps(); refreshAppList()
-        toast(tr("已取消选择当前列表", "Cleared visible apps"))
+        toast(tr("Pilihan aplikasi terlihat dibatalkan", "Cleared visible apps"))
     }
 
     private fun appRow(app: AppEntry): View = MaterialCheckBox(this).apply {
@@ -755,12 +747,12 @@ class MainActivity : Activity() {
     private fun updateModeUi() {
         if (!::modeValue.isInitialized) return
         if (splitModeSwitch.isChecked) {
-            modeValue.text = tr("分应用模式", "Split Mode")
-            modeHint.text = tr("仅“应用”页勾选的应用走 VPN；已勾选应用会显示在列表最上面。", "Only selected apps use VPN; selected apps stay on top.")
+            modeValue.text = tr("Mode Pisah", "Split Mode")
+            modeHint.text = tr("Hanya aplikasi yang dipilih di halaman “Aplikasi” yang lewat VPN; aplikasi terpilih tampil paling atas.", "Only selected apps use VPN; selected apps stay on top.")
             if (::appSection.isInitialized) { appSection.visibility = View.VISIBLE; appSection.alpha = 1.0f }
         } else {
-            modeValue.text = tr("全局模式", "Global Mode")
-            modeHint.text = tr("所有应用走 VPN；应用页的勾选会保留，但当前不生效。", "All apps use VPN; app selections are kept but inactive.")
+            modeValue.text = tr("Mode Global", "Global Mode")
+            modeHint.text = tr("Semua aplikasi lewat VPN; pilihan aplikasi tersimpan tapi tidak aktif.", "All apps use VPN; app selections are kept but inactive.")
             if (::appSection.isInitialized) { appSection.visibility = View.VISIBLE; appSection.alpha = 1.0f }
         }
     }
@@ -800,37 +792,37 @@ class MainActivity : Activity() {
     }
 
     private fun refreshState(extra: String = "") {
-        val state = if (vpnRunning) tr("已连接", "Connected") else tr("未连接", "Disconnected")
+        val state = if (vpnRunning) tr("Terhubung", "Connected") else tr("Tidak Terhubung", "Disconnected")
         statusBanner.text = state
-        statusText.text = "${tr("状态", "Status")}: $state${if (extra.isNotBlank()) " · $extra" else ""}"
+        statusText.text = "Status: $state${if (extra.isNotBlank()) " · $extra" else ""}"
         statusBanner.setTextColor(if (vpnRunning) green else onPrimary)
-        connectButton.text = if (vpnRunning) tr("断开 VPN", "Disconnect VPN") else tr("连接 VPN", "Connect VPN")
+        connectButton.text = if (vpnRunning) tr("Putuskan VPN", "Disconnect VPN") else tr("Hubungkan VPN", "Connect VPN")
         val dark = android.content.res.ColorStateList.valueOf(darkAccent)
         connectButton.backgroundTintList = dark
         connectButton.setTextColor(Color.WHITE)
-        if (::languageZhButton.isInitialized) {
-            languageZhButton.backgroundTintList = android.content.res.ColorStateList.valueOf(if (!useEnglish) darkAccent else primary)
+        if (::languageIdButton.isInitialized) {
+            languageIdButton.backgroundTintList = android.content.res.ColorStateList.valueOf(if (!useEnglish) darkAccent else primary)
             languageEnButton.backgroundTintList = android.content.res.ColorStateList.valueOf(if (useEnglish) darkAccent else primary)
-            languageZhButton.setTextColor(if (!useEnglish) Color.WHITE else onPrimary)
+            languageIdButton.setTextColor(if (!useEnglish) Color.WHITE else onPrimary)
             languageEnButton.setTextColor(if (useEnglish) Color.WHITE else onPrimary)
         }
         updateConfigState(extra)
     }
     private fun connectVpn() {
         saveInputs()
-        if (vpnRunning) { toast(tr("已经在运行", "Already running")); return }
-        if (splitModeSwitch.isChecked && selectedPackages.isEmpty()) { toast(tr("请至少勾选一个应用", "Select at least one app")); log(tr("分应用模式下，请至少勾选一个应用再连接", "Select at least one app before connecting in split mode")); refreshState("未选择应用"); return }
+        if (vpnRunning) { toast(tr("Sudah berjalan", "Already running")); return }
+        if (splitModeSwitch.isChecked && selectedPackages.isEmpty()) { toast(tr("Pilih setidaknya satu aplikasi", "Select at least one app")); log(tr("Di mode pisah, pilih setidaknya satu aplikasi sebelum terhubung", "Select at least one app before connecting in split mode")); refreshState(tr("Tidak ada aplikasi dipilih", "No apps selected")); return }
         if (!hasValidRegistration()) {
-            log(tr("未找到有效注册文件，正在自动注册…", "No valid registration found. Registering automatically…"))
+            log(tr("File registrasi valid tidak ditemukan. Mendaftar otomatis…", "No valid registration found. Registering automatically…"))
             executor.execute {
                 try {
                     deleteInvalidConfigIfNeeded()
                     val result = Usqueandroid.register(configFile.absolutePath, "Android")
                     handler.post {
-                        if (result.isNullOrBlank() && hasValidRegistration()) { log(tr("注册成功，准备请求 VPN 权限…", "Registered. Requesting VPN permission…")); requestVpnAndStart() }
-                        else { log("注册失败: ${result.ifNullOrBlank(tr("未知错误", "Unknown error"))}"); refreshState(tr("注册失败", "Registration failed")) }
+                        if (result.isNullOrBlank() && hasValidRegistration()) { log(tr("Pendaftaran berhasil. Meminta izin VPN…", "Registered. Requesting VPN permission…")); requestVpnAndStart() }
+                        else { log("Pendaftaran gagal: ${result.ifNullOrBlank(tr("Kesalahan tidak diketahui", "Unknown error"))}"); refreshState(tr("Pendaftaran gagal", "Registration failed")) }
                     }
-                } catch (e: Exception) { handler.post { log("注册异常: ${e.message ?: e.javaClass.simpleName}"); refreshState(tr("注册异常", "Registration error")) } }
+                } catch (e: Exception) { handler.post { log("Galat pendaftaran: ${e.message ?: e.javaClass.simpleName}"); refreshState(tr("Galat pendaftaran", "Registration error")) } }
             }
             return
         }
@@ -846,9 +838,9 @@ class MainActivity : Activity() {
         val endpoint = "${normalizedEndpointHost()}:${normalizedPort()}"
         val splitMode = splitModeSwitch.isChecked
         val allowedApps = if (splitMode) selectedPackagesForVpn() else arrayListOf()
-        log(if (splitMode) tr("启动分应用 VPN：${allowedApps.size} 个应用 · $endpoint", "Starting split VPN: ${allowedApps.size} apps · $endpoint") else tr("启动全局 VPN：$endpoint", "Starting global VPN: $endpoint"))
+        log(if (splitMode) tr("Memulai VPN pisah: ${allowedApps.size} aplikasi · $endpoint", "Starting split VPN: ${allowedApps.size} apps · $endpoint") else tr("Memulai VPN global: $endpoint", "Starting global VPN: $endpoint"))
         resetSpeedMeter()
-        vpnRunning = true; refreshState(tr("请求中", "Starting"))
+        vpnRunning = true; refreshState(tr("Memulai", "Starting"))
         val intent = Intent(this, UsqueVpnService::class.java)
             .putExtra("configPath", configFile.absolutePath)
             .putExtra("sni", sni)
@@ -856,28 +848,27 @@ class MainActivity : Activity() {
             .putExtra("splitMode", splitMode)
             .putStringArrayListExtra("allowedApps", allowedApps)
         startService(intent)
-        log(tr("VPN 服务已启动", "VPN service started"))
-        refreshState(if (splitMode) tr("分应用模式运行中", "Split mode running") else tr("全局模式运行中", "Global mode running"))
+        log(tr("Layanan VPN dimulai", "VPN service started"))
+        refreshState(if (splitMode) tr("Mode pisah berjalan", "Split mode running") else tr("Mode global berjalan", "Global mode running"))
     }
     private fun disconnectVpn() {
-        log(tr("正在停止 VPN 服务…", "Stopping VPN service…"))
-        vpnRunning = false; refreshState(tr("正在停止", "Stopping")); resetSpeedMeter()
+        log(tr("Menghentikan layanan VPN…", "Stopping VPN service…"))
+        vpnRunning = false; refreshState(tr("Menghentikan", "Stopping")); resetSpeedMeter()
         UsqueVpnService.stopActiveTunnel()
         runCatching { startService(Intent(this, UsqueVpnService::class.java).setAction(UsqueVpnService.ACTION_STOP)) }
-        handler.postDelayed({ runCatching { stopService(Intent(this, UsqueVpnService::class.java)) }; onTunnelStopped(tr("已停止", "Stopped")) }, 500)
+        handler.postDelayed({ runCatching { stopService(Intent(this, UsqueVpnService::class.java)) }; onTunnelStopped(tr("Dihentikan", "Stopped")) }, 500)
     }
     private fun onTunnelStopped(msg: String) { vpnRunning = false; refreshState(msg); log(msg) }
     private fun normalizedEndpointHost(): String = parseEndpointHost(endpointInput.text?.toString().orEmpty().trim().ifBlank { "162.159.198.2" }).ifBlank { "162.159.198.2" }
-    private fun normalizedPort(): Int = (portInput.text?.toString().orEmpty().trim().toIntOrNull() ?: parseEndpointPort(endpointInput.text?.toString().orEmpty(), 500)).coerceIn(1, 65535)
+    private fun normalizedPort(): Int = 443
     private fun normalizedEndpoint(): String = "${normalizedEndpointHost()}:${normalizedPort()}"
     private fun parseEndpointHost(value: String): String { val v = value.trim(); if (v.isBlank()) return "162.159.198.2"; if (v.startsWith("[") && v.contains("]")) return v.substringAfter("[").substringBefore("]"); return if (v.count { it == ':' } == 1) v.substringBefore(':') else v }
-    private fun parseEndpointPort(value: String, fallback: Int): Int { val v = value.trim(); val p = when { v.startsWith("[") && v.contains("]:") -> v.substringAfter("]:"); v.count { it == ':' } == 1 -> v.substringAfter(':'); else -> "" }; return p.toIntOrNull()?.takeIf { it in 1..65535 } ?: fallback }
     private fun log(msg: String) { logText.text = msg }
     private fun String?.ifNullOrBlank(fallback: String): String = if (this.isNullOrBlank()) fallback else this
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQ_VPN && resultCode == RESULT_OK) { vpnGranted = true; if (hasValidRegistration()) startTunnelNow() else connectVpn() }
-        else if (requestCode == REQ_VPN) toast(tr("VPN 权限未授权", "VPN permission denied"))
+        else if (requestCode == REQ_VPN) toast(tr("Izin VPN ditolak", "VPN permission denied"))
     }
 }
