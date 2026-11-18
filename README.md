@@ -63,7 +63,7 @@ gradle clean assembleDebug
 gradle clean assembleRelease
 ```
 
-If no release signing config is provided, the release APK may be unsigned depending on the environment.
+The release APK is unsigned. Sign it yourself (for example with `apksigner`) before installing it.
 
 ### GitHub Actions Recommended
 
@@ -77,29 +77,14 @@ The workflow will:
 
 - Build with JDK 17 and Gradle 8.5
 - Run `gradle clean` to avoid stale dex / manifest output
-- Build a signed release APK when signing secrets are configured
+- Build an unsigned release APK (sign it yourself before installing or distributing it)
 - Upload the APK and `SHA256SUMS` to the matching GitHub Release
-
-Required signing secrets:
-
-```text
-ANDROID_KEYSTORE_BASE64
-ANDROID_KEYSTORE_PASSWORD
-ANDROID_KEY_ALIAS
-ANDROID_KEY_PASSWORD
-```
-
-See also:
-
-```text
-docs/github-actions-signing.md
-```
 
 ## 📖 Usage
 
 1. **Install APK** - Download and install the latest APK on an Android device.
 2. **First Run** - The app registers a Cloudflare WARP account automatically if no valid config exists.
-3. **Configure** - Set SNI, endpoint, port, and optional profiles.
+3. **Configure** - Set SNI, endpoint, and optional profiles.
 4. **Choose Mode** - Use Global mode or Per-App mode.
 5. **Connect** - Tap the connect button to start the VPN.
 
@@ -115,7 +100,7 @@ docs/github-actions-signing.md
 | Parameter | Example / Default | Description |
 |-----------|-------------------|-------------|
 | SNI | `www.visa.cn` | TLS SNI value used by the tunnel |
-| Endpoint | `162.159.198.2:500` | WARP / MASQUE endpoint |
+| Endpoint | `162.159.198.2:443` | WARP / MASQUE endpoint |
 | Mode | Global / Per-App | Traffic routing mode |
 
 ## 🏗️ Architecture
@@ -131,8 +116,6 @@ usque-android-app/
 │   │   ├── usque.aar
 │   │   └── usque-classes.jar
 │   └── build.gradle
-├── docs/
-│   └── github-actions-signing.md
 └── .github/workflows/
     └── android.yml                     # CI APK build and Release upload
 ```
