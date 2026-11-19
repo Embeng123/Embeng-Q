@@ -1,23 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.EmbengQ.Base" parent="Theme.Material3.Light.NoActionBar">
-        <item name="colorPrimary">#00747C</item>
-        <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorPrimaryContainer">#DDF5F5</item>
-        <item name="colorOnPrimaryContainer">#00555B</item>
-        <item name="colorSecondary">#4D5B71</item>
-        <item name="colorSecondaryContainer">#DDF5F5</item>
-        <item name="colorOnSecondaryContainer">#172233</item>
-        <item name="colorSurface">#FFFFFF</item>
-        <item name="colorOnSurface">#172233</item>
-        <item name="colorSurfaceVariant">#F1F6F7</item>
-        <item name="colorOnSurfaceVariant">#4D5B71</item>
-        <item name="colorOutline">#748199</item>
-        <item name="android:colorAccent">#00747C</item>
-        <item name="android:windowBackground">#F5F7F9</item>
-        <item name="android:statusBarColor">#081827</item>
+    <style name="Theme.EmbengQ.Base" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#E0E0E0</item>
+        <item name="colorOnPrimary">#121212</item>
+        <item name="colorPrimaryContainer">#383838</item>
+        <item name="colorOnPrimaryContainer">#FFFFFF</item>
+        <item name="colorSecondary">#BDBDBD</item>
+        <item name="colorOnSecondary">#121212</item>
+        <item name="colorSecondaryContainer">#383838</item>
+        <item name="colorOnSecondaryContainer">#FFFFFF</item>
+        <item name="colorTertiary">#E0E0E0</item>
+        <item name="colorOnTertiary">#121212</item>
+        <item name="colorError">#FFFFFF</item>
+        <item name="colorOnError">#121212</item>
+        <item name="colorErrorContainer">#383838</item>
+        <item name="colorOnErrorContainer">#FFFFFF</item>
+        <item name="colorSurface">#1E1E1E</item>
+        <item name="colorOnSurface">#F5F5F5</item>
+        <item name="colorSurfaceVariant">#2A2A2A</item>
+        <item name="colorOnSurfaceVariant">#BDBDBD</item>
+        <item name="colorOutline">#757575</item>
+        <item name="android:colorAccent">#E0E0E0</item>
+        <item name="android:windowBackground">#121212</item>
+        <item name="android:statusBarColor">#212121</item>
         <item name="android:windowLightStatusBar">false</item>
-        <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:navigationBarColor">#121212</item>
         <item name="android:fontFamily">sans</item>
         <item name="android:textAllCaps">false</item>
     </style>

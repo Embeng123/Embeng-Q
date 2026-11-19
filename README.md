@@ -100,10 +100,12 @@ The workflow will:
 1. **Install APK** - Download and install the latest APK on an Android device.
 2. **First Run** - Open the app with an internet connection. It automatically registers a Cloudflare WARP account if no valid config exists. Home shows the account status and offers a retry if registration fails.
 3. **Configure** - Edit SNI and the server address directly on Home. The SNI starts as `classroom.google.com`; type over it to use another domain.
-4. **Choose Mode** - Use Global mode or Per-App mode.
+4. **Choose Mode** - Open Apps. Leave **Only selected apps** off to use the VPN for all apps, or turn it on and check the apps you want to use the VPN.
 5. **Connect** - Tap the connect button to start the VPN.
 
 **Reset defaults** restores both the SNI (`classroom.google.com`) and the default server address. The Apps tab uses a compact searchable list with selection controls; only the list scrolls while search and actions stay visible.
+
+Routing and app selection are managed together in Apps. Change the language from the ID/EN menu in the top toolbar. Home displays the full saved account configuration, including its access token and private key, as selectable text.
 
 To replace an account, disconnect the VPN and choose **Create new account** on Home. The existing account is only replaced after the new registration succeeds. This creates a new account; it does not renew an existing account or apply a WARP+ license.
 
