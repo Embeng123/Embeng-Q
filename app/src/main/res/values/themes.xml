@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.EmbengQ.Base" parent="Theme.Material3.Dark.NoActionBar">
-        <item name="colorPrimary">#E0E0E0</item>
+        <item name="colorPrimary">#81C784</item>
         <item name="colorOnPrimary">#121212</item>
-        <item name="colorPrimaryContainer">#383838</item>
+        <item name="colorPrimaryContainer">#263B28</item>
         <item name="colorOnPrimaryContainer">#FFFFFF</item>
-        <item name="colorSecondary">#BDBDBD</item>
+        <item name="colorSecondary">#81C784</item>
         <item name="colorOnSecondary">#121212</item>
         <item name="colorSecondaryContainer">#383838</item>
         <item name="colorOnSecondaryContainer">#FFFFFF</item>
@@ -20,7 +20,7 @@
         <item name="colorSurfaceVariant">#2A2A2A</item>
         <item name="colorOnSurfaceVariant">#BDBDBD</item>
         <item name="colorOutline">#757575</item>
-        <item name="android:colorAccent">#E0E0E0</item>
+        <item name="android:colorAccent">#81C784</item>
         <item name="android:windowBackground">#121212</item>
         <item name="android:statusBarColor">#212121</item>
         <item name="android:windowLightStatusBar">false</item>

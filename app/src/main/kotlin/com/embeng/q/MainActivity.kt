@@ -121,7 +121,7 @@ class MainActivity : Activity() {
     private val textColor = Color.rgb(245, 245, 245)
     private val subText = Color.rgb(189, 189, 189)
     private val outline = Color.rgb(66, 66, 66)
-    private val green = Color.WHITE
+    private val green = Color.rgb(129, 199, 132)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -746,7 +746,10 @@ class MainActivity : Activity() {
         }
         val details = accountDetails
         accountDetailsText.visibility = if (details == null) View.GONE else View.VISIBLE
-        accountDetailsText.text = details.orEmpty()
+        val text = details.orEmpty()
+        if (accountDetailsText.text.toString() != text) {
+            accountDetailsText.text = text
+        }
     }
     private fun updateAccountUi() {
         val busy = accountRegistrationBusy.get()
@@ -866,8 +869,8 @@ class MainActivity : Activity() {
         statusBanner.setTextColor(if (connected) green else textColor)
         statusIndicator.setTextColor(if (connected) green else subText)
         connectButton.contentDescription = if (vpnRunning) tr("Putuskan VPN", "Disconnect VPN") else tr("Hubungkan VPN", "Connect VPN")
-        connectButton.backgroundTintList = ColorStateList.valueOf(if (vpnRunning) navy else darkAccent)
-        connectButton.iconTint = ColorStateList.valueOf(if (vpnRunning) Color.WHITE else bg)
+        connectButton.backgroundTintList = ColorStateList.valueOf(if (connected) green else if (vpnRunning) navy else darkAccent)
+        connectButton.iconTint = ColorStateList.valueOf(if (vpnRunning && !connected) Color.WHITE else bg)
         updateAccountUi()
         updateConfigState()
     }
