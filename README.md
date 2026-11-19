@@ -1,18 +1,18 @@
-<h1 align="center">Usque Android App</h1>
+<h1 align="center">Embeng-Q</h1>
 
 <p align="center">
   <strong>Cloudflare WARP / MASQUE VPN Client for Android</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/garthnet/usque-android-app/releases">
-    <img src="https://img.shields.io/github/v/release/garthnet/usque-android-app?style=flat-square" alt="Release">
+  <a href="https://github.com/Embeng123/Embeng-Q/releases">
+    <img src="https://img.shields.io/github/v/release/Embeng123/Embeng-Q?style=flat-square" alt="Release">
   </a>
-  <a href="https://github.com/garthnet/usque-android-app">
+  <a href="https://github.com/Embeng123/Embeng-Q">
     <img src="https://img.shields.io/badge/platform-android-blue?style=flat-square" alt="Platform">
   </a>
-  <a href="https://github.com/garthnet/usque-android-app/actions/workflows/android.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/garthnet/usque-android-app/android.yml?branch=main&style=flat-square" alt="Android APK">
+  <a href="https://github.com/Embeng123/Embeng-Q/actions/workflows/android.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/Embeng123/Embeng-Q/android.yml?branch=main&style=flat-square" alt="Android APK">
   </a>
 </p>
 
@@ -32,15 +32,26 @@
 
 ## 📲 Download
 
-Download the latest APK from the [Releases](https://github.com/garthnet/usque-android-app/releases) page.
+Download the APK from the [Releases](https://github.com/Embeng123/Embeng-Q/releases) page.
 
-Direct download:
+APK asset names follow these patterns (depending on whether release signing is configured):
 
 ```text
-https://github.com/garthnet/usque-android-app/releases/download/v1.0.2/usque-android-app-release-v1.0.2.apk
+embeng-q-release-v1.0.2.apk
+embeng-q-debug-v1.0.2.apk
 ```
 
 > The GitHub Actions workflow reads `versionName` from `app/build.gradle` and publishes the APK to the matching versioned Release, for example `1.0.2` → `v1.0.2`.
+
+### App identity
+
+- App label: `Embeng-Q`
+- Application ID and namespace: `com.embeng.q`
+- Kotlin sources: `app/src/main/kotlin/com/embeng/q/`
+- Launcher activity: `com.embeng.q.MainActivity`
+- VPN service: `com.embeng.q.EmbengVpnService`
+
+The `usqueandroid` / `go` packages and `usque` library filenames belong to the bundled upstream VPN engine. Keep them unchanged: the native bindings depend on those names.
 
 ## 🛠️ Build from Source
 
@@ -48,7 +59,7 @@ https://github.com/garthnet/usque-android-app/releases/download/v1.0.2/usque-and
 
 - JDK 17
 - Android SDK, API 34
-- Gradle 8.5 or compatible Gradle setup
+- Gradle 8.5 (downloaded by the included Gradle wrapper)
 - Prebuilt upstream Android artifacts already included in this repository:
   - `app/libs/usque.aar`
   - `app/libs/usque-classes.jar`
@@ -57,13 +68,15 @@ https://github.com/garthnet/usque-android-app/releases/download/v1.0.2/usque-and
 
 ```bash
 # Debug APK
-gradle clean assembleDebug
+./gradlew clean :app:assembleDebug :app:lintDebug
 
 # Release APK
-gradle clean assembleRelease
+./gradlew clean :app:assembleRelease :app:lintRelease
 ```
 
-The release APK is unsigned. Sign it yourself (for example with `apksigner`) before installing it.
+On Windows, use `gradlew.bat` instead of `./gradlew`.
+
+Local APKs are generated under `app/build/outputs/apk/`. A release APK is unsigned unless all four signing environment variables are set: `ANDROID_KEYSTORE_FILE`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`. `ANDROID_KEYSTORE_FILE` can be an absolute path or a path relative to the repository root. Keep the keystore and passwords outside version control. To install an unsigned release, sign it yourself (for example with `apksigner`).
 
 ### GitHub Actions Recommended
 
@@ -76,8 +89,10 @@ gh workflow run android.yml
 The workflow will:
 
 - Build with JDK 17 and Gradle 8.5
-- Run `gradle clean` to avoid stale dex / manifest output
-- Build an unsigned release APK (sign it yourself before installing or distributing it)
+- Run `./gradlew clean` and Android lint to avoid stale output and catch build issues
+- Build a signed release APK when all four repository secrets are configured: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`
+- Otherwise build an installable debug APK (debug signing is not suitable for a stable production release)
+- Verify the built APK uses `com.embeng.q` and has a valid signature
 - Upload the APK and `SHA256SUMS` to the matching GitHub Release
 
 ## 📖 Usage
@@ -106,10 +121,10 @@ The workflow will:
 ## 🏗️ Architecture
 
 ```text
-usque-android-app/
+Embeng-Q/
 ├── app/
 │   ├── src/main/
-│   │   ├── kotlin/com/warp/usque/      # Kotlin UI and VPN service
+│   │   ├── kotlin/com/embeng/q/        # Kotlin UI and VPN service
 │   │   ├── res/                        # Android resources
 │   │   └── AndroidManifest.xml
 │   ├── libs/                           # Prebuilt upstream AAR / Java classes
@@ -142,7 +157,7 @@ usque-android-app/
 - Endpoint and SNI are configured through the `usqueandroid` API before the tunnel starts.
 - The VPN service runs as a foreground service for better long-running stability.
 - Unexpected native tunnel disconnects trigger automatic restart unless the user manually stopped the VPN.
-- GitHub Actions uses `gradle clean` before building to prevent stale dex / manifest mismatches after package-name changes.
+- GitHub Actions uses `./gradlew clean` before building to prevent stale dex / manifest mismatches after package-name changes.
 
 ## 📝 License
 

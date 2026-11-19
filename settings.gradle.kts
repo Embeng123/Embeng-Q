@@ -13,5 +13,5 @@ dependencyResolutionManagement {
         flatDir { dirs("app/libs") }
     }
 }
-rootProject.name = "UsqueAndroid"
+rootProject.name = "Embeng-Q"
 include(":app")

@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -28,7 +29,13 @@ class EmbengVpnService : VpnService() {
         @Volatile private var activeService: EmbengVpnService? = null
 
         fun stopActiveTunnel() {
-            activeService?.stopVpn("external stop") ?: runCatching { Usqueandroid.stopTunnel() }
+            val service = activeService
+            if (service != null) {
+                service.manualStop.set(true)
+                service.stopVpn("external stop")
+            } else {
+                runCatching { Usqueandroid.stopTunnel() }
+            }
         }
     }
 
@@ -75,8 +82,8 @@ class EmbengVpnService : VpnService() {
     }
 
     private fun startNativeTunnel(configPath: String, sni: String, endpoint: String, splitMode: Boolean, allowedApps: ArrayList<String>) {
+        if (manualStop.get() || !running.compareAndSet(false, true)) return
         try {
-            running.set(true)
             Log.i(TAG, "starting vpn service endpoint=$endpoint sni=$sni splitMode=$splitMode allowedApps=${allowedApps.size} config=$configPath")
             Usqueandroid.resetConnectionOptions()
             Usqueandroid.setSNI(sni)
@@ -93,18 +100,23 @@ class EmbengVpnService : VpnService() {
 
             if (splitMode) {
                 if (allowedApps.isEmpty()) throw IllegalStateException("split mode enabled but no apps selected")
+                var allowedAppCount = 0
                 allowedApps.distinct().forEach { pkg ->
                     if (pkg == packageName) {
                         Log.i(TAG, "skip allowing own package to avoid VPN loop: $pkg")
                     } else {
-                        runCatching { builder.addAllowedApplication(pkg) }
-                            .onFailure { Log.w(TAG, "addAllowedApplication failed: $pkg", it) }
+                        try {
+                            builder.addAllowedApplication(pkg)
+                            allowedAppCount++
+                        } catch (e: PackageManager.NameNotFoundException) {
+                            Log.w(TAG, "selected app is no longer installed: $pkg", e)
+                        }
                     }
                 }
+                check(allowedAppCount > 0) { "split mode requires at least one installed app other than $packageName" }
             } else {
                 // Critical: do not route this app's own MASQUE/QUIC control connection into itself.
-                runCatching { builder.addDisallowedApplication(packageName) }
-                    .onFailure { Log.w(TAG, "addDisallowedApplication failed", it) }
+                builder.addDisallowedApplication(packageName)
             }
 
             val ipv6 = runCatching { Usqueandroid.getAssignedIPv6(configPath) }.getOrDefault("")
@@ -232,9 +244,17 @@ class EmbengVpnService : VpnService() {
         return fd
     }
 
+    override fun onRevoke() {
+        manualStop.set(true)
+        stopVpn("VPN permission revoked")
+        stopSelf()
+        super.onRevoke()
+    }
+
     override fun onDestroy() {
         manualStop.set(true)
         stopVpn("onDestroy")
+        executor.shutdownNow()
         if (activeService === this) activeService = null
         super.onDestroy()
     }

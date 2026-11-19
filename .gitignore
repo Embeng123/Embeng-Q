@@ -5,6 +5,8 @@ build/
 
 # Local machine config
 local.properties
+*.keystore
+*.jks
 
 # IDE files
 .idea/

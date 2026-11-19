@@ -25,10 +25,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle 8.5
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.5'
 
       - name: Check signing secrets
         id: signing
@@ -53,7 +54,7 @@ jobs:
 
       - name: Build debug APK
         if: ${{ steps.signing.outputs.has_signing != 'true' }}
-        run: gradle --version && gradle clean assembleDebug --no-daemon
+        run: ./gradlew clean :app:assembleDebug :app:lintDebug --no-daemon
 
       - name: Build signed release APK
         if: ${{ steps.signing.outputs.has_signing == 'true' }}
@@ -62,25 +63,37 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: gradle --version && gradle clean assembleRelease --no-daemon
+        run: ./gradlew clean :app:assembleRelease :app:lintRelease --no-daemon
 
       - name: Prepare APK artifact
+        env:
+          HAS_SIGNING: ${{ steps.signing.outputs.has_signing }}
         run: |
           mkdir -p dist
-          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
-            cp app/build/outputs/apk/release/app-release.apk dist/usque-android-app-release.apk
-          elif [ -f app/build/outputs/apk/release/app-release-unsigned.apk ]; then
-            cp app/build/outputs/apk/release/app-release-unsigned.apk dist/usque-android-app-release-unsigned.apk
+          if [ "$HAS_SIGNING" = "true" ]; then
+            cp app/build/outputs/apk/release/app-release.apk dist/embeng-q-release.apk
           else
-            cp app/build/outputs/apk/debug/app-debug.apk dist/usque-android-app-debug.apk
+            cp app/build/outputs/apk/debug/app-debug.apk dist/embeng-q-debug.apk
           fi
-          sha256sum dist/*.apk > dist/SHA256SUMS.txt
-          cat dist/SHA256SUMS.txt
+          apkanalyzer="$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/apkanalyzer' -type f | head -n 1)"
+          if [ -z "$apkanalyzer" ]; then
+            echo "Android SDK apkanalyzer was not found" >&2
+            exit 1
+          fi
+          for apk in dist/*.apk; do
+            actual_package="$("$apkanalyzer" manifest application-id "$apk")"
+            if [ "$actual_package" != "com.embeng.q" ]; then
+              echo "Unexpected APK package: $actual_package (expected com.embeng.q)" >&2
+              exit 1
+            fi
+            "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify "$apk"
+          done
+          (cd dist && sha256sum *.apk > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: usque-android-apk
+          name: embeng-q-apk
           path: dist/*
 
       - name: Upload APK to versioned GitHub Release
@@ -103,7 +116,7 @@ jobs:
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
               --target "$GITHUB_SHA" \
-              --title "Usque Android App $tag" \
+              --title "Embeng-Q $tag" \
               --notes "Automated APK build for $tag."
           else
             gh release edit "$tag" --target "$GITHUB_SHA"
@@ -113,6 +126,6 @@ jobs:
             base="$(basename "$apk" .apk)"
             cp "$apk" "dist/${base}-${tag}.apk"
           done
-          sha256sum dist/*-${tag}.apk > "dist/SHA256SUMS-${tag}.txt"
+          (cd dist && sha256sum *-${tag}.apk > "SHA256SUMS-${tag}.txt")
 
           gh release upload "$tag" dist/*-${tag}.apk "dist/SHA256SUMS-${tag}.txt" --clobber

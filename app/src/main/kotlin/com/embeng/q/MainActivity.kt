@@ -74,7 +74,6 @@ class MainActivity : Activity() {
 
     private var useEnglish = false
     private var vpnRunning = false
-    private var vpnGranted = false
     private var configDirty = false
     private var appsLoaded = false
     private var suppressProfileSelection = false
@@ -122,6 +121,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         handler.removeCallbacks(speedTicker)
+        executor.shutdown()
         super.onDestroy()
     }
 
@@ -687,7 +687,7 @@ class MainActivity : Activity() {
     private fun loadInstalledApps() {
         executor.execute {
             val pm = packageManager
-            val flags = PackageManager.GET_META_DATA or PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_UNINSTALLED_PACKAGES
+            val flags = PackageManager.GET_META_DATA or PackageManager.MATCH_DISABLED_COMPONENTS
             val apps = pm.getInstalledPackages(flags)
                 .asSequence()
                 .mapNotNull { pkg -> pkg.applicationInfo }
@@ -756,7 +756,7 @@ class MainActivity : Activity() {
             if (::appSection.isInitialized) { appSection.visibility = View.VISIBLE; appSection.alpha = 1.0f }
         }
     }
-    private fun selectedPackagesForVpn(): ArrayList<String> = ArrayList(selectedPackages)
+    private fun selectedPackagesForVpn(): ArrayList<String> = ArrayList(selectedPackages.filter { it != packageName })
 
     private fun hasValidRegistration(): Boolean = configFile.exists() && runCatching { Usqueandroid.isRegistered(configFile.absolutePath) }.getOrDefault(false)
     private fun deleteInvalidConfigIfNeeded() {
@@ -811,7 +811,7 @@ class MainActivity : Activity() {
     private fun connectVpn() {
         saveInputs()
         if (vpnRunning) { toast(tr("Sudah berjalan", "Already running")); return }
-        if (splitModeSwitch.isChecked && selectedPackages.isEmpty()) { toast(tr("Pilih setidaknya satu aplikasi", "Select at least one app")); log(tr("Di mode pisah, pilih setidaknya satu aplikasi sebelum terhubung", "Select at least one app before connecting in split mode")); refreshState(tr("Tidak ada aplikasi dipilih", "No apps selected")); return }
+        if (splitModeSwitch.isChecked && selectedPackagesForVpn().isEmpty()) { toast(tr("Pilih setidaknya satu aplikasi", "Select at least one app")); log(tr("Di mode pisah, pilih setidaknya satu aplikasi sebelum terhubung", "Select at least one app before connecting in split mode")); refreshState(tr("Tidak ada aplikasi dipilih", "No apps selected")); return }
         if (!hasValidRegistration()) {
             log(tr("File registrasi valid tidak ditemukan. Mendaftar otomatis…", "No valid registration found. Registering automatically…"))
             executor.execute {
@@ -830,12 +830,12 @@ class MainActivity : Activity() {
     }
     private fun requestVpnAndStart() {
         val prepareIntent = VpnService.prepare(this)
-        if (prepareIntent != null && !vpnGranted) { startActivityForResult(prepareIntent, REQ_VPN); return }
-        vpnGranted = true; startTunnelNow()
+        if (prepareIntent != null) { startActivityForResult(prepareIntent, REQ_VPN); return }
+        startTunnelNow()
     }
     private fun startTunnelNow() {
         val sni = sniInput.text?.toString().orEmpty().ifBlank { "www.visa.cn" }
-        val endpoint = "${normalizedEndpointHost()}:${normalizedPort()}"
+        val endpoint = normalizedEndpoint()
         val splitMode = splitModeSwitch.isChecked
         val allowedApps = if (splitMode) selectedPackagesForVpn() else arrayListOf()
         log(if (splitMode) tr("Memulai VPN pisah: ${allowedApps.size} aplikasi · $endpoint", "Starting split VPN: ${allowedApps.size} apps · $endpoint") else tr("Memulai VPN global: $endpoint", "Starting global VPN: $endpoint"))
@@ -861,14 +861,17 @@ class MainActivity : Activity() {
     private fun onTunnelStopped(msg: String) { vpnRunning = false; refreshState(msg); log(msg) }
     private fun normalizedEndpointHost(): String = parseEndpointHost(endpointInput.text?.toString().orEmpty().trim().ifBlank { "162.159.198.2" }).ifBlank { "162.159.198.2" }
     private fun normalizedPort(): Int = 443
-    private fun normalizedEndpoint(): String = "${normalizedEndpointHost()}:${normalizedPort()}"
+    private fun normalizedEndpoint(): String {
+        val host = normalizedEndpointHost()
+        return if (':' in host) "[$host]:${normalizedPort()}" else "$host:${normalizedPort()}"
+    }
     private fun parseEndpointHost(value: String): String { val v = value.trim(); if (v.isBlank()) return "162.159.198.2"; if (v.startsWith("[") && v.contains("]")) return v.substringAfter("[").substringBefore("]"); return if (v.count { it == ':' } == 1) v.substringBefore(':') else v }
     private fun log(msg: String) { logText.text = msg }
     private fun String?.ifNullOrBlank(fallback: String): String = if (this.isNullOrBlank()) fallback else this
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQ_VPN && resultCode == RESULT_OK) { vpnGranted = true; if (hasValidRegistration()) startTunnelNow() else connectVpn() }
+        if (requestCode == REQ_VPN && resultCode == RESULT_OK) { if (hasValidRegistration()) requestVpnAndStart() else connectVpn() }
         else if (requestCode == REQ_VPN) toast(tr("Izin VPN ditolak", "VPN permission denied"))
     }
 }
