@@ -10,14 +10,19 @@ import android.graphics.drawable.GradientDrawable
 import android.net.VpnService
 import android.net.TrafficStats
 import android.os.Bundle
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import androidx.appcompat.content.res.AppCompatResources
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
+import android.text.style.StyleSpan
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -63,7 +68,9 @@ class MainActivity : Activity() {
     private lateinit var modeHint: TextView
     private lateinit var splitModeSwitch: MaterialSwitch
     private lateinit var appSearchInput: TextInputEditText
-    private lateinit var appListContainer: LinearLayout
+    private lateinit var appListContainer: ListView
+    private lateinit var appListAdapter: BaseAdapter
+    private val displayedApps = mutableListOf<AppEntry>()
     private lateinit var appCountText: TextView
     private lateinit var connectButton: MaterialButton
     private lateinit var defaultBtn: MaterialButton
@@ -77,9 +84,19 @@ class MainActivity : Activity() {
     private var appsLoaded = false
     private var currentPageIndex = 0
     private var pageSwitcher: ((Int) -> Unit)? = null
-    private var lastRxBytes = 0L
-    private var lastTxBytes = 0L
-    private var lastSpeedTs = 0L
+    private val speedMeter = TunnelSpeedMeter()
+    private var lastTunnelSnapshot = TunnelSnapshot()
+    private val tunnelObserver: (TunnelSnapshot) -> Unit = { snapshot ->
+        runOnUiThread {
+            if (!isDestroyed && !isFinishing) {
+                if (snapshot.phase != lastTunnelSnapshot.phase || snapshot.interfaceName != lastTunnelSnapshot.interfaceName) {
+                    resetSpeedMeter()
+                }
+                lastTunnelSnapshot = snapshot
+                refreshState()
+            }
+        }
+    }
     private val speedTicker = object : Runnable {
         override fun run() {
             updateSpeedLine()
@@ -111,8 +128,20 @@ class MainActivity : Activity() {
         refreshAppList()
         refreshState()
         resetSpeedMeter()
-        handler.post(speedTicker)
         if (!hasValidRegistration() && !accountRegistrationBusy.get()) registerAccount()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        TunnelState.observe(tunnelObserver)
+        resetSpeedMeter()
+        handler.post(speedTicker)
+    }
+
+    override fun onStop() {
+        TunnelState.removeObserver(tunnelObserver)
+        handler.removeCallbacks(speedTicker)
+        super.onStop()
     }
 
     override fun onResume() {
@@ -152,17 +181,17 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(navy)
-            setPadding(dp(20), 0, dp(12), 0)
+            setPadding(dp(16), 0, dp(8), 0)
         }
         toolbar.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_brand_shield)
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-        }, LinearLayout.LayoutParams(dp(30), dp(34)).apply { rightMargin = dp(10) })
+        }, LinearLayout.LayoutParams(dp(22), dp(26)).apply { rightMargin = dp(10) })
         toolbar.addView(TextView(this).apply {
             text = SpannableString("Embeng-Q").apply {
                 setSpan(ForegroundColorSpan(cyan), 6, 8, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
-            textSize = 32f
+            textSize = 24f
             typeface = brandTypeface
             letterSpacing = -0.025f
             setTextColor(Color.WHITE)
@@ -177,12 +206,12 @@ class MainActivity : Activity() {
         toolbar.addView(languageButton, LinearLayout.LayoutParams(dp(56), dp(48)))
         val tabs = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(16), 0, dp(16), 0)
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            setPadding(dp(8), 0, dp(8), 0)
             setBackgroundColor(navy)
         }
         val pageHost = FrameLayout(this).apply { setBackgroundColor(bg) }
-        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(68)))
+        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(56)))
         root.addView(tabs, LinearLayout.LayoutParams(-1, dp(48)))
         root.addView(pageHost, LinearLayout.LayoutParams(-1, 0, 1f))
 
@@ -196,7 +225,7 @@ class MainActivity : Activity() {
         val appsTab = tabButton(tr("Aplikasi", "Apps"))
         val tabsList = listOf(overviewTab, appsTab)
         tabsList.forEachIndexed { index, b ->
-            tabs.addView(b, LinearLayout.LayoutParams(0, -1, 1f).apply { if (index < tabsList.lastIndex) rightMargin = dp(4) })
+            tabs.addView(b, LinearLayout.LayoutParams(dp(104), -1).apply { if (index < tabsList.lastIndex) rightMargin = dp(4) })
         }
 
         val homePage = buildHomePage()
@@ -211,7 +240,10 @@ class MainActivity : Activity() {
             tabsList.forEachIndexed { i, b -> setTabSelected(b, i == safe) }
             if (safe == 1) ensureAppsLoaded()
             pageHost.removeAllViews()
-            pageHost.addView(pageScroll(pages[safe]), FrameLayout.LayoutParams(-1, -1))
+            val page = if (safe == 0) pageScroll(pages[safe]) else pages[safe].apply {
+                (parent as? ViewGroup)?.removeView(this)
+            }
+            pageHost.addView(page, FrameLayout.LayoutParams(-1, -1))
         }
 
         overviewTab.setOnClickListener { showIndex(0) }
@@ -220,9 +252,11 @@ class MainActivity : Activity() {
         showIndex(currentPageIndex)
 
         defaultBtn.setOnClickListener {
-            val defaultEndpoint = Usqueandroid.getDefaultEndpoint(configFile.absolutePath)
+            val defaultEndpoint = runCatching { Usqueandroid.getDefaultEndpoint(configFile.absolutePath) }
+                .getOrDefault("162.159.198.2:443")
+            sniInput.setText(DEFAULT_SNI)
             endpointInput.setText(parseEndpointHost(defaultEndpoint))
-            refreshState(tr("Endpoint default dimuat", "Default endpoint loaded"))
+            refreshState(tr("SNI dan server bawaan dipulihkan", "Default SNI and server restored"))
         }
         connectButton.setOnClickListener { if (vpnRunning) disconnectVpn() else connectVpn() }
         sniInput.addTextChangedListener(dirtyWatcher { sniField.error = null })
@@ -236,18 +270,18 @@ class MainActivity : Activity() {
 
     private fun buildHomePage(): View {
         val content = pageContent()
-        content.addView(sectionHeader(tr("Koneksi", "Connection"), tr("Edit SNI, lalu hubungkan.", "Edit your SNI, then connect.")))
         content.addView(buildConnectionSettings())
         content.addView(sectionTitle(tr("AKUN WARP", "WARP ACCOUNT")))
         val accountCard = card()
         val accountBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(12), dp(16), dp(12))
+            setPadding(dp(12), dp(8), dp(12), dp(4))
         }
         accountStatusText = infoLine("")
         accountButton = secondaryButton(tr("Buat ulang akun", "Create new account")).apply {
+            backgroundTintList = ColorStateList.valueOf(surface)
             setOnClickListener {
-                if (vpnRunning || Usqueandroid.isRunning()) {
+                if (TunnelState.snapshot.isActive || Usqueandroid.isRunning()) {
                     toast(tr("Putuskan VPN sebelum mengganti akun", "Disconnect VPN before replacing the account"))
                 } else if (hasValidRegistration()) {
                     android.app.AlertDialog.Builder(this@MainActivity)
@@ -260,13 +294,13 @@ class MainActivity : Activity() {
             }
         }
         accountBox.addView(accountStatusText)
-        accountBox.addView(accountButton, LinearLayout.LayoutParams(-1, -2))
+        accountBox.addView(accountButton, LinearLayout.LayoutParams(-2, dp(48)).apply { gravity = Gravity.END })
         accountCard.addView(accountBox)
         content.addView(accountCard)
 
         content.addView(sectionTitle(tr("PERUTEAN", "ROUTING")))
         val modeCard = card()
-        val modeBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(12)) }
+        val modeBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(12), dp(8)) }
         modeHint = infoLine("")
         splitModeSwitch = MaterialSwitch(this).apply {
             text = tr("Hanya aplikasi pilihan", "Selected apps only")
@@ -290,8 +324,8 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(surface)
-            setPadding(dp(20), dp(14), dp(20), dp(14))
-            minimumHeight = dp(96)
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            minimumHeight = dp(76)
         }
         val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val statusRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -310,19 +344,19 @@ class MainActivity : Activity() {
             textSize = 12f
             setTextColor(subText)
             typeface = Typeface.MONOSPACE
-            setPadding(0, dp(6), 0, 0)
+            setPadding(0, dp(3), 0, 0)
         }
         connectButton = MaterialButton(this).apply {
             text = ""
             contentDescription = tr("Hubungkan VPN", "Connect VPN")
-            icon = getDrawable(R.drawable.ic_power)
-            iconSize = dp(28)
+            icon = AppCompatResources.getDrawable(this@MainActivity, R.drawable.ic_power)
+            iconSize = dp(24)
             iconPadding = 0
             iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
             iconTint = ColorStateList.valueOf(Color.WHITE)
             gravity = Gravity.CENTER
             backgroundTintList = ColorStateList.valueOf(darkAccent)
-            cornerRadius = dp(32)
+            cornerRadius = dp(28)
             minimumWidth = 0
             minimumHeight = 0
             setPadding(0, 0, 0, 0)
@@ -334,7 +368,7 @@ class MainActivity : Activity() {
         details.addView(speedText)
         details.addView(statusText)
         bar.addView(details, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(16) })
-        bar.addView(connectButton, LinearLayout.LayoutParams(dp(64), dp(64)))
+        bar.addView(connectButton, LinearLayout.LayoutParams(dp(56), dp(56)))
         return bar
     }
 
@@ -353,7 +387,7 @@ class MainActivity : Activity() {
         val config = card()
         val configBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(8))
+            setPadding(dp(12), dp(12), dp(12), dp(4))
         }
         val connectionHeader = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         connectionHeader.addView(TextView(this).apply {
@@ -370,7 +404,7 @@ class MainActivity : Activity() {
             setPadding(dp(10), dp(4), dp(10), dp(4))
             background = round(surface2, dp(4))
         })
-        configBox.addView(connectionHeader, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
+        configBox.addView(connectionHeader, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
         sniInput = input(DEFAULT_SNI).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         }
@@ -378,14 +412,14 @@ class MainActivity : Activity() {
         endpointInput = input("162.159.198.2").apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         }
-        defaultBtn = secondaryButton(tr("Pulihkan server bawaan", "Reset server address")).apply {
+        defaultBtn = secondaryButton(tr("Pulihkan bawaan", "Reset defaults")).apply {
             backgroundTintList = ColorStateList.valueOf(surface)
             textSize = 12f
         }
         configStateText = infoLine("")
         configBox.addView(sniField)
         configBox.addView(outlinedField(tr("Alamat server (IP)", "Server address (IP)"), endpointInput),
-            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         configBox.addView(defaultBtn, LinearLayout.LayoutParams(-2, dp(48)).apply { gravity = Gravity.END })
         configBox.addView(configStateText)
         config.addView(configBox)
@@ -394,30 +428,46 @@ class MainActivity : Activity() {
 
     private fun buildAppsPage(): View {
         val content = pageContent()
-        content.addView(sectionHeader(tr("Pilih aplikasi", "Select apps"), tr("Aktifkan ‘Hanya aplikasi pilihan’ di Beranda untuk memakai daftar ini.", "Turn on ‘Selected apps only’ on Home to use this list.")))
-        val appSection = card()
-        val appBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(10)) }
         appSearchInput = input(tr("Nama aplikasi atau paket", "App name or package"))
-        appCountText = infoLine(tr("0 aplikasi dipilih", "0 apps selected"))
-        appListContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        appBox.addView(outlinedField(tr("Cari aplikasi", "Search apps"), appSearchInput))
-        appBox.addView(appCountText)
-        val appActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        selectAllAppsBtn = secondaryButton(tr("Pilih Semua", "Select All")).apply { setOnClickListener { selectAllVisibleApps() } }
-        clearAllAppsBtn = secondaryButton(tr("Batalkan Semua", "Select None")).apply { setOnClickListener { clearAllVisibleApps() } }
-        appActions.addView(selectAllAppsBtn, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
-        appActions.addView(clearAllAppsBtn, LinearLayout.LayoutParams(0, -1, 1f))
-        appBox.addView(appActions, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
-        appBox.addView(MaterialDivider(this).apply { dividerColor = outline }, LinearLayout.LayoutParams(-1, 1).apply { topMargin = dp(8); bottomMargin = dp(8) })
-        appBox.addView(appListContainer)
-        appSection.addView(appBox)
-        content.addView(appSection)
+        appCountText = infoLine(tr("0 dipilih", "0 selected")).apply { textSize = 12f; maxLines = 2 }
+        content.addView(outlinedField(tr("Cari aplikasi", "Search apps"), appSearchInput))
+        val appActions = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        appActions.addView(appCountText, LinearLayout.LayoutParams(0, -2, 1f))
+        selectAllAppsBtn = secondaryButton(tr("Semua", "All")).apply {
+            backgroundTintList = ColorStateList.valueOf(bg)
+            minimumWidth = 0
+            setPadding(dp(8), 0, dp(8), 0)
+            setOnClickListener { selectAllVisibleApps() }
+        }
+        clearAllAppsBtn = secondaryButton(tr("Batal", "None")).apply {
+            backgroundTintList = ColorStateList.valueOf(bg)
+            minimumWidth = 0
+            setPadding(dp(8), 0, dp(8), 0)
+            setOnClickListener { clearAllVisibleApps() }
+        }
+        appActions.addView(selectAllAppsBtn, LinearLayout.LayoutParams(-2, dp(48)))
+        appActions.addView(clearAllAppsBtn, LinearLayout.LayoutParams(-2, dp(48)))
+        content.addView(appActions)
+        appListAdapter = object : BaseAdapter() {
+            override fun getCount() = displayedApps.size
+            override fun getItem(position: Int) = displayedApps[position]
+            override fun getItemId(position: Int) = position.toLong()
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View =
+                appRow(getItem(position), convertView as? MaterialCheckBox)
+        }
+        appListContainer = ListView(this).apply {
+            adapter = appListAdapter
+            divider = android.graphics.drawable.ColorDrawable(outline)
+            dividerHeight = dp(1)
+            setBackgroundColor(surface)
+        }
+        content.addView(appListContainer, LinearLayout.LayoutParams(-1, 0, 1f))
         return content
     }
 
     private fun pageContent() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(20), dp(22), dp(20), dp(24))
+        setPadding(dp(12), dp(12), dp(12), dp(12))
         setBackgroundColor(bg)
     }
 
@@ -448,15 +498,8 @@ class MainActivity : Activity() {
         button.isSelected = selected
     }
 
-    private fun sectionHeader(title: String, desc: String) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        setPadding(0, 0, 0, dp(20))
-        addView(TextView(this@MainActivity).apply { text = title; textSize = 22f; setTextColor(textColor); typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL) })
-        addView(TextView(this@MainActivity).apply { text = desc; textSize = 13f; setTextColor(subText); setPadding(0, dp(4), 0, 0) })
-    }
-
     private fun card() = MaterialCardView(this).apply {
-        radius = dp(12).toFloat()
+        radius = dp(6).toFloat()
         cardElevation = 0f
         strokeWidth = dp(1)
         strokeColor = outline
@@ -467,7 +510,7 @@ class MainActivity : Activity() {
         text = label
         isAllCaps = false
         textSize = 13f
-        cornerRadius = dp(10)
+        cornerRadius = dp(4)
         minimumHeight = dp(48)
         insetTop = 0
         insetBottom = 0
@@ -481,13 +524,13 @@ class MainActivity : Activity() {
         letterSpacing = 0.1f
         setTextColor(subText)
         setTypeface(null, Typeface.BOLD)
-        setPadding(dp(2), dp(18), dp(2), dp(8))
+        setPadding(dp(2), dp(12), dp(2), dp(6))
     }
     private fun input(hint: String) = TextInputEditText(this).apply {
         setHint(hint)
         setTextColor(textColor)
         setHintTextColor(subText)
-        textSize = 17f
+        textSize = 15f
         isSingleLine = true
     }
     private fun outlinedField(label: String, edit: EditText) = TextInputLayout(this).apply {
@@ -499,8 +542,8 @@ class MainActivity : Activity() {
         val corner = dp(6).toFloat()
         setBoxCornerRadii(corner, corner, corner, corner)
         boxStrokeColor = darkAccent
-        edit.minimumHeight = dp(64)
-        edit.setPaddingRelative(dp(14), dp(24), dp(14), dp(8))
+        edit.minimumHeight = dp(56)
+        edit.setPaddingRelative(dp(12), dp(20), dp(12), dp(6))
         addView(edit, LinearLayout.LayoutParams(-1, -2))
     }
     private fun infoLine(s: String) = TextView(this).apply {
@@ -564,10 +607,14 @@ class MainActivity : Activity() {
     private fun loadInstalledApps() {
         executor.execute {
             val pm = packageManager
-            val flags = PackageManager.GET_META_DATA or PackageManager.MATCH_DISABLED_COMPONENTS
-            val apps = pm.getInstalledPackages(flags)
-                .asSequence()
-                .mapNotNull { pkg -> pkg.applicationInfo }
+            val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            val savedPackages = prefs.getStringSet("selectedPackages", emptySet()).orEmpty().toList()
+            val launchable = pm.queryIntentActivities(launcher, PackageManager.MATCH_DISABLED_COMPONENTS)
+                .map { it.activityInfo.applicationInfo }
+            val savedApps = savedPackages.mapNotNull { pkg ->
+                runCatching { pm.getApplicationInfo(pkg, 0) }.getOrNull()
+            }
+            val apps = (launchable + savedApps).asSequence()
                 .filter { it.packageName != packageName }
                 .map { info ->
                     val label = runCatching { info.loadLabel(pm).toString() }.getOrDefault(info.packageName)
@@ -576,23 +623,27 @@ class MainActivity : Activity() {
                 .distinctBy { it.packageName }
                 .sortedWith(compareBy<AppEntry> { it.label.lowercase() }.thenBy { it.packageName })
                 .toList()
-            handler.post { allApps.clear(); allApps.addAll(apps); refreshAppList() }
+            handler.post {
+                if (!isDestroyed && !isFinishing) { allApps.clear(); allApps.addAll(apps); refreshAppList() }
+            }
         }
     }
     private fun refreshAppList() {
         if (!::appListContainer.isInitialized) return
         if (!appsLoaded) { appCountText.text = tr("Daftar aplikasi dimuat saat membuka Aplikasi", "App list loads when opening Apps"); return }
-        appListContainer.removeAllViews()
         val visible = visibleApps()
-        visible.forEach { app -> appListContainer.addView(appRow(app), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) }) }
-        appCountText.text = if (splitModeSwitch.isChecked) tr("Dipilih ${selectedPackages.size} · Ditampilkan ${visible.size}/${allApps.size}", "Selected ${selectedPackages.size} · Showing ${visible.size}/${allApps.size}") else tr("Mode global: pilihan tidak aktif · Ditampilkan ${visible.size}/${allApps.size}", "Global mode: selections inactive · Showing ${visible.size}/${allApps.size}")
+        displayedApps.clear()
+        displayedApps.addAll(visible)
+        appListAdapter.notifyDataSetChanged()
+        appCountText.text = if (splitModeSwitch.isChecked)
+            tr("${selectedPackages.size} dipilih · ${visible.size}/${allApps.size}", "${selectedPackages.size} selected · ${visible.size}/${allApps.size}")
+            else "Global · ${visible.size}/${allApps.size}"
         updateModeUi()
     }
     private fun visibleApps(): List<AppEntry> {
         val query = appSearchInput.text?.toString().orEmpty().trim().lowercase()
         return allApps.asSequence()
             .filter { query.isBlank() || it.label.lowercase().contains(query) || it.packageName.lowercase().contains(query) }
-            .sortedWith(compareByDescending<AppEntry> { selectedPackages.contains(it.packageName) }.thenBy { it.label.lowercase() }.thenBy { it.packageName })
             .toList()
     }
     private fun selectAllVisibleApps() {
@@ -608,13 +659,21 @@ class MainActivity : Activity() {
         toast(tr("Pilihan aplikasi terlihat dibatalkan", "Cleared visible apps"))
     }
 
-    private fun appRow(app: AppEntry): View = MaterialCheckBox(this).apply {
-        text = "${app.label}\n${app.packageName}"
+    private fun appRow(app: AppEntry, recycled: MaterialCheckBox? = null): View = (recycled ?: MaterialCheckBox(this)).apply {
+        setOnCheckedChangeListener(null)
+        text = SpannableString("${app.label}\n${app.packageName}").apply {
+            setSpan(StyleSpan(Typeface.BOLD), 0, app.label.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            val start = app.label.length + 1
+            setSpan(ForegroundColorSpan(subText), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            setSpan(RelativeSizeSpan(0.82f), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         setTextColor(textColor)
         textSize = 13f
-        minimumHeight = dp(52)
-        background = round(if (selectedPackages.contains(app.packageName)) primary else surface2, dp(8), outline)
-        setPadding(dp(12), dp(6), dp(12), dp(6))
+        maxLines = 2
+        ellipsize = android.text.TextUtils.TruncateAt.END
+        minimumHeight = dp(56)
+        setBackgroundColor(if (selectedPackages.contains(app.packageName)) primary else surface)
+        setPadding(dp(8), dp(4), dp(8), dp(4))
         isChecked = selectedPackages.contains(app.packageName)
         setOnCheckedChangeListener { _, checked ->
             if (checked) selectedPackages.add(app.packageName) else selectedPackages.remove(app.packageName)
@@ -642,10 +701,14 @@ class MainActivity : Activity() {
             else -> tr("Belum ada akun. Hubungkan internet lalu coba daftar.", "No account yet. Connect to the internet and try registering.")
         }
         accountButton.text = if (hasValidRegistration()) tr("Buat ulang akun", "Create new account") else tr("Coba daftar akun", "Try registering")
-        accountButton.isEnabled = !busy && !vpnRunning
-        connectButton.isEnabled = !busy
+        accountButton.isEnabled = !busy && !TunnelState.snapshot.isActive
+        connectButton.isEnabled = !busy && TunnelState.snapshot.phase != TunnelPhase.STOPPING
     }
     private fun registerAccount(replace: Boolean = false, connectAfter: Boolean = false) {
+        if (TunnelState.snapshot.isActive) {
+            toast(tr("Putuskan VPN sebelum mengganti akun", "Disconnect VPN before replacing the account"))
+            return
+        }
         if (!accountRegistrationBusy.compareAndSet(false, true)) {
             toast(tr("Pendaftaran masih berjalan", "Registration is still in progress"))
             return
@@ -688,24 +751,33 @@ class MainActivity : Activity() {
         }
     }
     private fun resetSpeedMeter() {
-        lastRxBytes = TrafficStats.getTotalRxBytes().takeIf { it >= 0 } ?: 0L
-        lastTxBytes = TrafficStats.getTotalTxBytes().takeIf { it >= 0 } ?: 0L
-        lastSpeedTs = System.currentTimeMillis()
+        speedMeter.reset()
         if (::speedText.isInitialized) speedText.text = "↓ 0 B/s   ↑ 0 B/s"
+    }
+    private fun readTunnelTraffic(interfaceName: String?): TrafficSample? {
+        if (interfaceName == null || !interfaceName.matches(Regex("[a-zA-Z0-9_.-]+"))) return null
+        return runCatching {
+            val rx: Long
+            val tx: Long
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                rx = TrafficStats.getRxBytes(interfaceName)
+                tx = TrafficStats.getTxBytes(interfaceName)
+            } else {
+                val stats = File("/sys/class/net/$interfaceName/statistics")
+                rx = File(stats, "rx_bytes").readText().trim().toLong()
+                tx = File(stats, "tx_bytes").readText().trim().toLong()
+            }
+            if (rx < 0 || tx < 0) null else TrafficSample(rx, tx, SystemClock.elapsedRealtime())
+        }.getOrNull()
     }
     private fun updateSpeedLine() {
         updateAccountUi()
         if (!::speedText.isInitialized) return
-        if (!vpnRunning) { speedText.text = "↓ 0 B/s   ↑ 0 B/s"; return }
-        val now = System.currentTimeMillis()
-        val rx = TrafficStats.getTotalRxBytes().takeIf { it >= 0 } ?: return
-        val tx = TrafficStats.getTotalTxBytes().takeIf { it >= 0 } ?: return
-        if (lastSpeedTs <= 0L) { resetSpeedMeter(); return }
-        val seconds = ((now - lastSpeedTs).coerceAtLeast(1)).toDouble() / 1000.0
-        val down = ((rx - lastRxBytes).coerceAtLeast(0) / seconds).toLong()
-        val up = ((tx - lastTxBytes).coerceAtLeast(0) / seconds).toLong()
-        lastRxBytes = rx; lastTxBytes = tx; lastSpeedTs = now
-        speedText.text = "↓ ${formatSpeed(down)}   ↑ ${formatSpeed(up)}"
+        val snapshot = TunnelState.snapshot
+        if (snapshot.phase != TunnelPhase.CONNECTED) { resetSpeedMeter(); return }
+        val rate = speedMeter.update(readTunnelTraffic(snapshot.interfaceName))
+        speedText.text = if (rate == null) tr("Kecepatan VPN tidak tersedia", "VPN speed unavailable")
+            else "↓ ${formatSpeed(rate.download)}   ↑ ${formatSpeed(rate.upload)}"
     }
     private fun formatSpeed(bytesPerSecond: Long): String {
         val units = arrayOf("B/s", "KB/s", "MB/s", "GB/s")
@@ -716,12 +788,22 @@ class MainActivity : Activity() {
     }
 
     private fun refreshState(extra: String = "") {
-        val state = if (vpnRunning) tr("Terhubung", "Connected") else tr("Tidak Terhubung", "Disconnected")
+        val snapshot = TunnelState.snapshot
+        vpnRunning = snapshot.isActive
+        val connected = snapshot.phase == TunnelPhase.CONNECTED
+        val state = when (snapshot.phase) {
+            TunnelPhase.CONNECTING -> tr("Menghubungkan", "Connecting")
+            TunnelPhase.CONNECTED -> tr("Terhubung", "Connected")
+            TunnelPhase.RECONNECTING -> tr("Menyambung ulang", "Reconnecting")
+            TunnelPhase.STOPPING -> tr("Memutuskan", "Disconnecting")
+            TunnelPhase.DISCONNECTED -> tr("Tidak Terhubung", "Disconnected")
+        }
         statusBanner.text = state
-        statusText.text = extra
-        statusText.visibility = if (extra.isBlank()) View.GONE else View.VISIBLE
-        statusBanner.setTextColor(if (vpnRunning) green else textColor)
-        statusIndicator.setTextColor(if (vpnRunning) green else subText)
+        val detail = extra.ifBlank { snapshot.detail }
+        statusText.text = detail
+        statusText.visibility = if (detail.isBlank()) View.GONE else View.VISIBLE
+        statusBanner.setTextColor(if (connected) green else textColor)
+        statusIndicator.setTextColor(if (connected) green else subText)
         connectButton.contentDescription = if (vpnRunning) tr("Putuskan VPN", "Disconnect VPN") else tr("Hubungkan VPN", "Connect VPN")
         connectButton.backgroundTintList = ColorStateList.valueOf(if (vpnRunning) navy else darkAccent)
         updateAccountUi()
@@ -734,7 +816,7 @@ class MainActivity : Activity() {
         }
         if (requireSni() == null) return
         saveInputs()
-        if (vpnRunning) { toast(tr("Sudah berjalan", "Already running")); return }
+        if (TunnelState.snapshot.isActive) { toast(tr("Sudah berjalan", "Already running")); return }
         if (splitModeSwitch.isChecked && selectedPackagesForVpn().isEmpty()) { toast(tr("Pilih setidaknya satu aplikasi", "Select at least one app")); log(tr("Di mode pisah, pilih setidaknya satu aplikasi sebelum terhubung", "Select at least one app before connecting in split mode")); refreshState(tr("Tidak ada aplikasi dipilih", "No apps selected")); return }
         if (!hasValidRegistration()) {
             registerAccount(connectAfter = true)
@@ -755,25 +837,25 @@ class MainActivity : Activity() {
         val allowedApps = if (splitMode) selectedPackagesForVpn() else arrayListOf()
         log(if (splitMode) tr("Memulai VPN pisah: ${allowedApps.size} aplikasi · $endpoint", "Starting split VPN: ${allowedApps.size} apps · $endpoint") else tr("Memulai VPN global: $endpoint", "Starting global VPN: $endpoint"))
         resetSpeedMeter()
-        vpnRunning = true; refreshState(tr("Memulai", "Starting"))
         val intent = Intent(this, EmbengVpnService::class.java)
             .putExtra("configPath", configFile.absolutePath)
             .putExtra("sni", sni)
             .putExtra("endpoint", endpoint)
             .putExtra("splitMode", splitMode)
             .putStringArrayListExtra("allowedApps", allowedApps)
-        startService(intent)
-        log(tr("Layanan VPN dimulai", "VPN service started"))
-        refreshState(if (splitMode) tr("Mode pisah berjalan", "Split mode running") else tr("Mode global berjalan", "Global mode running"))
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent) else startService(intent)
+            refreshState(tr("Memulai layanan VPN…", "Starting VPN service…"))
+        } catch (e: Exception) {
+            refreshState(e.message ?: tr("Gagal memulai VPN", "Could not start VPN"))
+        }
     }
     private fun disconnectVpn() {
         log(tr("Menghentikan layanan VPN…", "Stopping VPN service…"))
-        vpnRunning = false; refreshState(tr("Menghentikan", "Stopping")); resetSpeedMeter()
         EmbengVpnService.stopActiveTunnel()
-        runCatching { startService(Intent(this, EmbengVpnService::class.java).setAction(EmbengVpnService.ACTION_STOP)) }
-        handler.postDelayed({ runCatching { stopService(Intent(this, EmbengVpnService::class.java)) }; onTunnelStopped(tr("Dihentikan", "Stopped")) }, 500)
+        refreshState()
+        resetSpeedMeter()
     }
-    private fun onTunnelStopped(msg: String) { vpnRunning = false; refreshState(msg); log(msg) }
     private fun normalizedEndpointHost(): String = parseEndpointHost(endpointInput.text?.toString().orEmpty().trim().ifBlank { "162.159.198.2" }).ifBlank { "162.159.198.2" }
     private fun normalizedPort(): Int = 443
     private fun normalizedEndpoint(): String {
@@ -782,7 +864,6 @@ class MainActivity : Activity() {
     }
     private fun parseEndpointHost(value: String): String { val v = value.trim(); if (v.isBlank()) return "162.159.198.2"; if (v.startsWith("[") && v.contains("]")) return v.substringAfter("[").substringBefore("]"); return if (v.count { it == ':' } == 1) v.substringBefore(':') else v }
     private fun log(msg: String) { logText.text = msg }
-    private fun String?.ifNullOrBlank(fallback: String): String = if (this.isNullOrBlank()) fallback else this
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)

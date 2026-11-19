@@ -25,7 +25,7 @@
 - 🔒 **Global VPN** - Route all app traffic through the VPN
 - 📱 **Per-App VPN** - Route only selected apps through the VPN
 - ⚙️ **Connection settings** - Edit SNI and server address directly on Home; default SNI: `classroom.google.com`
-- 📊 **Speed Display** - Runtime traffic speed using Android `TrafficStats`
+- 📊 **Speed Display** - Traffic speed for the VPN interface; shows unavailable when Android does not expose its counters
 - 🛡️ **Foreground Service** - Better long-running VPN stability on Android
 - 🔁 **Auto Restart** - Automatically restarts the native tunnel after unexpected disconnects
 - ⚡ **Native Core** - Go + gomobile AAR integration for native performance
@@ -103,7 +103,13 @@ The workflow will:
 4. **Choose Mode** - Use Global mode or Per-App mode.
 5. **Connect** - Tap the connect button to start the VPN.
 
+**Reset defaults** restores both the SNI (`classroom.google.com`) and the default server address. The Apps tab uses a compact searchable list with selection controls; only the list scrolls while search and actions stay visible.
+
 To replace an account, disconnect the VPN and choose **Create new account** on Home. The existing account is only replaced after the new registration succeeds. This creates a new account; it does not renew an existing account or apply a WARP+ license.
+
+Connection status follows the tunnel service: Connecting, Connected, Reconnecting, and Disconnected. Reopening the app keeps the current service status. If Android restarts the service, it restores the SNI, endpoint, routing mode, and selected apps from the last started session. Edits made during a connection apply to the next connection.
+
+The speed display reads the VPN interface rather than total device traffic. On Android 12 and later it uses interface-specific `TrafficStats`; older versions try interface counters exposed by the system. If those counters are inaccessible, the app displays **VPN speed unavailable**.
 
 ### Proxy Modes
 
