@@ -24,7 +24,7 @@
 - 🚀 **Cloudflare WARP** - MASQUE-based WARP tunnel using the upstream Go core
 - 🔒 **Global VPN** - Route all app traffic through the VPN
 - 📱 **Per-App VPN** - Route only selected apps through the VPN
-- ⚙️ **Profiles** - Save and apply multiple endpoint / SNI profiles
+- ⚙️ **Connection settings** - Edit SNI and server address directly on Home; default SNI: `classroom.google.com`
 - 📊 **Speed Display** - Runtime traffic speed using Android `TrafficStats`
 - 🛡️ **Foreground Service** - Better long-running VPN stability on Android
 - 🔁 **Auto Restart** - Automatically restarts the native tunnel after unexpected disconnects
@@ -99,7 +99,7 @@ The workflow will:
 
 1. **Install APK** - Download and install the latest APK on an Android device.
 2. **First Run** - The app registers a Cloudflare WARP account automatically if no valid config exists.
-3. **Configure** - Set SNI, endpoint, and optional profiles.
+3. **Configure** - Edit SNI and the server address directly on Home. The SNI starts as `classroom.google.com`; type over it to use another domain.
 4. **Choose Mode** - Use Global mode or Per-App mode.
 5. **Connect** - Tap the connect button to start the VPN.
 
@@ -114,7 +114,7 @@ The workflow will:
 
 | Parameter | Example / Default | Description |
 |-----------|-------------------|-------------|
-| SNI | `www.visa.cn` | TLS SNI value used by the tunnel |
+| SNI | `classroom.google.com` | Editable TLS SNI domain on Home |
 | Endpoint | `162.159.198.2:443` | WARP / MASQUE endpoint |
 | Mode | Global / Per-App | Traffic routing mode |
 

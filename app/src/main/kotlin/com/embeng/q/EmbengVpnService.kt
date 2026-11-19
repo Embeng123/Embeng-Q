@@ -65,7 +65,7 @@ class EmbengVpnService : VpnService() {
         manualStop.set(false)
 
         val configPath = intent?.getStringExtra("configPath") ?: File(filesDir, "config.json").absolutePath
-        val sni = intent?.getStringExtra("sni") ?: "www.visa.cn"
+        val sni = intent?.getStringExtra("sni") ?: "classroom.google.com"
         val endpoint = intent?.getStringExtra("endpoint") ?: "162.159.198.2:443"
         val splitMode = intent?.getBooleanExtra("splitMode", false) ?: false
         val allowedApps = intent?.getStringArrayListExtra("allowedApps") ?: arrayListOf()

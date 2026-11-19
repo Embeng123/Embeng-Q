@@ -1,22 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.EmbengQ" parent="Theme.Material3.Light.NoActionBar">
-        <item name="colorPrimary">#2454B0</item>
+        <item name="colorPrimary">#00747C</item>
         <item name="colorOnPrimary">#FFFFFF</item>
-        <item name="colorPrimaryContainer">#E2ECFF</item>
-        <item name="colorOnPrimaryContainer">#183D85</item>
+        <item name="colorPrimaryContainer">#DDF5F5</item>
+        <item name="colorOnPrimaryContainer">#00555B</item>
         <item name="colorSecondary">#4D5B71</item>
-        <item name="colorSecondaryContainer">#E2ECFF</item>
+        <item name="colorSecondaryContainer">#DDF5F5</item>
         <item name="colorOnSecondaryContainer">#172233</item>
         <item name="colorSurface">#FFFFFF</item>
         <item name="colorOnSurface">#172233</item>
-        <item name="colorSurfaceVariant">#F0F4FA</item>
+        <item name="colorSurfaceVariant">#F1F6F7</item>
         <item name="colorOnSurfaceVariant">#4D5B71</item>
         <item name="colorOutline">#748199</item>
-        <item name="android:colorAccent">#2454B0</item>
-        <item name="android:windowBackground">#F4F6FA</item>
-        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:colorAccent">#00747C</item>
+        <item name="android:windowBackground">#F5F7F9</item>
+        <item name="android:statusBarColor">#081827</item>
+        <item name="android:windowLightStatusBar">false</item>
         <item name="android:navigationBarColor">#FFFFFF</item>
+        <item name="android:windowLightNavigationBar">true</item>
         <item name="android:fontFamily">sans</item>
         <item name="android:textAllCaps">false</item>
     </style>

@@ -15,6 +15,9 @@ import android.os.Looper
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -23,36 +26,31 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.materialswitch.MaterialSwitch
-import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
-import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.divider.MaterialDivider
 import usqueandroid.Usqueandroid
 import java.io.File
-import org.json.JSONArray
-import org.json.JSONObject
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     companion object {
         private const val REQ_VPN = 1001
-        private const val DEFAULT_SNI = "www.visa.cn"
-        private val SNI_PRESETS = listOf("contoh.com", "bb.com", "hh.com")
+        private const val DEFAULT_SNI = "classroom.google.com"
     }
     data class AppEntry(val label: String, val packageName: String)
-    private data class Profile(val sni: String, val endpoint: String, val customSni: Boolean)
 
     private val handler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
     private val prefs by lazy { getSharedPreferences("embengq", MODE_PRIVATE) }
     private val configFile by lazy { File(filesDir, "config.json") }
+    private val brandTypeface by lazy { Typeface.createFromAsset(assets, "fonts/Rajdhani-Bold.ttf") }
 
     private lateinit var endpointInput: TextInputEditText
-    private lateinit var sniDropdown: MaterialAutoCompleteTextView
     private lateinit var sniInput: TextInputEditText
-    private lateinit var customSniField: TextInputLayout
+    private lateinit var sniField: TextInputLayout
     private lateinit var statusBanner: TextView
+    private lateinit var statusIndicator: TextView
     private lateinit var statusText: TextView
     private lateinit var speedText: TextView
     private lateinit var configStateText: TextView
@@ -64,14 +62,7 @@ class MainActivity : Activity() {
     private lateinit var appCountText: TextView
     private lateinit var connectButton: MaterialButton
     private lateinit var defaultBtn: MaterialButton
-    private lateinit var homeProfileSpinner: Spinner
-    private lateinit var profileSpinner: Spinner
-    private lateinit var profileNameInput: TextInputEditText
-    private lateinit var saveNewProfileBtn: MaterialButton
-    private lateinit var overwriteProfileBtn: MaterialButton
-    private lateinit var deleteProfileBtn: MaterialButton
-    private lateinit var languageIdButton: MaterialButton
-    private lateinit var languageEnButton: MaterialButton
+    private lateinit var languageButton: MaterialButton
     private lateinit var selectAllAppsBtn: MaterialButton
     private lateinit var clearAllAppsBtn: MaterialButton
 
@@ -79,8 +70,6 @@ class MainActivity : Activity() {
     private var vpnRunning = false
     private var configDirty = false
     private var appsLoaded = false
-    private var editingProfileName = ""
-    private var sniChoice = SNI_PRESETS.size
     private var currentPageIndex = 0
     private var pageSwitcher: ((Int) -> Unit)? = null
     private var lastRxBytes = 0L
@@ -92,19 +81,20 @@ class MainActivity : Activity() {
             handler.postDelayed(this, 1000)
         }
     }
-    private val profiles = linkedMapOf<String, Profile>()
     private val allApps = mutableListOf<AppEntry>()
     private val selectedPackages = linkedSetOf<String>()
 
-    private val bg = Color.rgb(244, 246, 250)
+    private val bg = Color.rgb(245, 247, 249)
+    private val navy = Color.rgb(8, 24, 39)
+    private val cyan = Color.rgb(63, 225, 232)
     private val surface = Color.WHITE
-    private val surface2 = Color.rgb(240, 244, 250)
-    private val primary = Color.rgb(226, 236, 255)
-    private val darkAccent = Color.rgb(36, 84, 176)
-    private val onPrimary = Color.rgb(24, 61, 133)
+    private val surface2 = Color.rgb(241, 246, 247)
+    private val primary = Color.rgb(221, 245, 245)
+    private val darkAccent = Color.rgb(0, 116, 124)
+    private val onPrimary = Color.rgb(0, 85, 91)
     private val textColor = Color.rgb(23, 34, 51)
     private val subText = Color.rgb(77, 91, 113)
-    private val outline = Color.rgb(215, 223, 235)
+    private val outline = Color.rgb(226, 232, 236)
     private val green = Color.rgb(23, 110, 66)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -128,19 +118,15 @@ class MainActivity : Activity() {
     private fun tr(id: String, en: String): String = if (useEnglish) en else id
     private fun setLanguage(en: Boolean) {
         if (en == useEnglish) return
-        val choice = sniChoice
-        val custom = sniInput.text?.toString().orEmpty()
+        val sni = sniInput.text?.toString().orEmpty()
         val endpoint = endpointInput.text?.toString().orEmpty()
-        val profileName = profileNameInput.text?.toString().orEmpty()
         val dirty = configDirty
         useEnglish = en
         prefs.edit().putBoolean("useEnglish", useEnglish).apply()
         buildUi()
         loadSavedState()
-        sniInput.setText(custom)
-        showSniChoice(choice)
+        sniInput.setText(sni)
         endpointInput.setText(endpoint)
-        profileNameInput.setText(profileName)
         configDirty = dirty
         refreshAppList()
         refreshState()
@@ -151,24 +137,43 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
         }
-        val toolbar = MaterialToolbar(this).apply {
-            title = "Embeng-Q"
-            setTitleTextColor(textColor)
-            setBackgroundColor(surface)
-            setPadding(dp(4), 0, dp(4), 0)
+        val toolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(navy)
+            setPadding(dp(20), 0, dp(12), 0)
         }
+        toolbar.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_brand_shield)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LinearLayout.LayoutParams(dp(30), dp(34)).apply { rightMargin = dp(10) })
+        toolbar.addView(TextView(this).apply {
+            text = SpannableString("Embeng-Q").apply {
+                setSpan(ForegroundColorSpan(cyan), 6, 8, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            textSize = 32f
+            typeface = brandTypeface
+            letterSpacing = -0.025f
+            setTextColor(Color.WHITE)
+            contentDescription = "Embeng-Q"
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        languageButton = secondaryButton(if (useEnglish) "ID" else "EN").apply {
+            contentDescription = tr("Ganti ke bahasa Inggris", "Switch to Indonesian")
+            setTextColor(cyan)
+            backgroundTintList = ColorStateList.valueOf(navy)
+            setOnClickListener { setLanguage(!useEnglish) }
+        }
+        toolbar.addView(languageButton, LinearLayout.LayoutParams(dp(56), dp(48)))
         val tabs = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(12), 0, dp(12), dp(8))
-            setBackgroundColor(surface)
+            setPadding(dp(16), 0, dp(16), 0)
+            setBackgroundColor(navy)
         }
         val pageHost = FrameLayout(this).apply { setBackgroundColor(bg) }
-        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(56)))
-        root.addView(tabs, LinearLayout.LayoutParams(-1, dp(56)))
-        root.addView(MaterialDivider(this).apply { dividerColor = outline })
+        root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(68)))
+        root.addView(tabs, LinearLayout.LayoutParams(-1, dp(48)))
         root.addView(pageHost, LinearLayout.LayoutParams(-1, 0, 1f))
-        setContentView(root)
 
         fun pageScroll(child: View): ScrollView = ScrollView(this).apply {
             isFillViewport = true
@@ -177,29 +182,29 @@ class MainActivity : Activity() {
             addView(child)
         }
         val overviewTab = tabButton(tr("Beranda", "Home"))
-        val configTab = tabButton(tr("Pengaturan", "Settings"))
         val appsTab = tabButton(tr("Aplikasi", "Apps"))
-        val tabsList = listOf(overviewTab, configTab, appsTab)
+        val tabsList = listOf(overviewTab, appsTab)
         tabsList.forEachIndexed { index, b ->
-            tabs.addView(b, LinearLayout.LayoutParams(0, -1, 1f).apply { if (index < 2) rightMargin = dp(4) })
+            tabs.addView(b, LinearLayout.LayoutParams(0, -1, 1f).apply { if (index < tabsList.lastIndex) rightMargin = dp(4) })
         }
 
         val homePage = buildHomePage()
-        val configPage = buildConfigPage()
         val appsPage = buildAppsPage()
-        val pages = listOf(homePage, configPage, appsPage)
+        root.addView(MaterialDivider(this).apply { dividerColor = outline })
+        root.addView(buildConnectionBar(), LinearLayout.LayoutParams(-1, -2))
+        setContentView(root)
+        val pages = listOf(homePage, appsPage)
         fun showIndex(index: Int) {
             val safe = index.coerceIn(0, pages.lastIndex)
             currentPageIndex = safe
             tabsList.forEachIndexed { i, b -> setTabSelected(b, i == safe) }
-            if (safe == 2) ensureAppsLoaded()
+            if (safe == 1) ensureAppsLoaded()
             pageHost.removeAllViews()
             pageHost.addView(pageScroll(pages[safe]), FrameLayout.LayoutParams(-1, -1))
         }
 
         overviewTab.setOnClickListener { showIndex(0) }
-        configTab.setOnClickListener { showIndex(1) }
-        appsTab.setOnClickListener { showIndex(2) }
+        appsTab.setOnClickListener { showIndex(1) }
         pageSwitcher = ::showIndex
         showIndex(currentPageIndex)
 
@@ -208,11 +213,8 @@ class MainActivity : Activity() {
             endpointInput.setText(parseEndpointHost(defaultEndpoint))
             refreshState(tr("Endpoint default dimuat", "Default endpoint loaded"))
         }
-        saveNewProfileBtn.setOnClickListener { saveAsNewProfile() }
-        overwriteProfileBtn.setOnClickListener { overwriteSelectedProfile() }
-        deleteProfileBtn.setOnClickListener { deleteSelectedProfile() }
         connectButton.setOnClickListener { if (vpnRunning) disconnectVpn() else connectVpn() }
-        sniInput.addTextChangedListener(dirtyWatcher { customSniField.error = null })
+        sniInput.addTextChangedListener(dirtyWatcher { sniField.error = null })
         endpointInput.addTextChangedListener(dirtyWatcher())
         appSearchInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -223,59 +225,16 @@ class MainActivity : Activity() {
 
     private fun buildHomePage(): View {
         val content = pageContent()
-        val hero = card()
-        val heroBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-        }
-        statusBanner = TextView(this).apply {
-            textSize = 24f
-            setTextColor(textColor)
-            setTypeface(null, Typeface.BOLD)
-            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
-        }
-        statusText = infoLine("")
-        speedText = TextView(this).apply {
-            text = "↓ 0 B/s   ↑ 0 B/s"
-            textSize = 14f
-            setTextColor(subText)
-            setTypeface(null, Typeface.BOLD)
-        }
-        homeProfileSpinner = Spinner(this)
-        connectButton = MaterialButton(this).apply {
-            text = tr("Hubungkan VPN", "Connect VPN")
-            textSize = 16f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            backgroundTintList = ColorStateList.valueOf(darkAccent)
-            cornerRadius = dp(10)
-            minimumHeight = dp(52)
-            insetTop = 0
-            insetBottom = 0
-            isAllCaps = false
-        }
-        heroBox.addView(statusBanner)
-        heroBox.addView(statusText)
-        heroBox.addView(speedText)
-        heroBox.addView(connectButton, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
-        hero.addView(heroBox)
-        content.addView(hero, LinearLayout.LayoutParams(-1, -2))
+        content.addView(sectionHeader(tr("Koneksi", "Connection"), tr("Edit SNI, lalu hubungkan.", "Edit your SNI, then connect.")))
+        content.addView(buildConnectionSettings())
 
-        val profileLabel = sectionTitle(tr("Profil VPN", "VPN profile"))
-        homeProfileSpinner.id = View.generateViewId()
-        profileLabel.labelFor = homeProfileSpinner.id
-        content.addView(profileLabel)
-        val profileCard = card()
-        profileCard.addView(homeProfileSpinner, FrameLayout.LayoutParams(-1, dp(48)))
-        content.addView(profileCard)
-
-        content.addView(sectionTitle(tr("Akses VPN", "VPN access")))
+        content.addView(sectionTitle(tr("PERUTEAN", "ROUTING")))
         val modeCard = card()
-        val modeBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(10), dp(16), dp(10)) }
+        val modeBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(12)) }
         modeHint = infoLine("")
         splitModeSwitch = MaterialSwitch(this).apply {
             text = tr("Hanya aplikasi pilihan", "Selected apps only")
-            textSize = 15f
+            textSize = 14f
             setTextColor(textColor)
             minimumHeight = dp(48)
             setOnCheckedChangeListener { _, _ ->
@@ -286,102 +245,115 @@ class MainActivity : Activity() {
         modeBox.addView(modeHint)
         modeCard.addView(modeBox)
         content.addView(modeCard)
-
         logText = TextView(this)
         return content
     }
 
-    private fun sniOptions() = SNI_PRESETS + tr("Custom (isi sendiri)", "Custom (enter your own)")
-
-    private fun showSniChoice(choice: Int) {
-        sniChoice = choice
-        sniDropdown.setText(sniOptions()[choice], false)
-        customSniField.visibility = if (choice == SNI_PRESETS.size) View.VISIBLE else View.GONE
-        customSniField.error = null
+    private fun buildConnectionBar(): View {
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(surface)
+            setPadding(dp(20), dp(14), dp(20), dp(14))
+            minimumHeight = dp(96)
+        }
+        val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val statusRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        statusIndicator = TextView(this).apply { text = "●"; textSize = 10f; setTextColor(subText) }
+        statusBanner = TextView(this).apply {
+            textSize = 14f
+            setTextColor(textColor)
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
+        statusRow.addView(statusIndicator, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) })
+        statusRow.addView(statusBanner)
+        statusText = infoLine("").apply { textSize = 11f; maxLines = 2 }
+        speedText = TextView(this).apply {
+            text = "↓ 0 B/s   ↑ 0 B/s"
+            textSize = 12f
+            setTextColor(subText)
+            typeface = Typeface.MONOSPACE
+            setPadding(0, dp(6), 0, 0)
+        }
+        connectButton = MaterialButton(this).apply {
+            text = ""
+            contentDescription = tr("Hubungkan VPN", "Connect VPN")
+            icon = getDrawable(R.drawable.ic_power)
+            iconSize = dp(28)
+            iconPadding = 0
+            iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+            iconTint = ColorStateList.valueOf(Color.WHITE)
+            gravity = Gravity.CENTER
+            backgroundTintList = ColorStateList.valueOf(darkAccent)
+            cornerRadius = dp(32)
+            minimumWidth = 0
+            minimumHeight = 0
+            setPadding(0, 0, 0, 0)
+            insetTop = 0
+            insetBottom = 0
+            elevation = dp(3).toFloat()
+        }
+        details.addView(statusRow)
+        details.addView(speedText)
+        details.addView(statusText)
+        bar.addView(details, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(16) })
+        bar.addView(connectButton, LinearLayout.LayoutParams(dp(64), dp(64)))
+        return bar
     }
 
-    private fun restoreSni(value: String, useCustom: Boolean = false) {
-        val preset = SNI_PRESETS.indexOf(value)
-        val choice = if (useCustom || preset < 0) SNI_PRESETS.size else preset
-        sniInput.setText(if (choice == SNI_PRESETS.size) value else "")
-        showSniChoice(choice)
-    }
-
-    private fun selectedSni(): String = SNI_PRESETS.getOrNull(sniChoice) ?: sniInput.text?.toString().orEmpty().trim()
-    private fun isCustomSni(): Boolean = sniChoice == SNI_PRESETS.size
+    private fun selectedSni(): String = sniInput.text?.toString().orEmpty().trim()
 
     private fun requireSni(): String? {
         val value = selectedSni()
         if (value.isNotBlank()) return value
-        pageSwitcher?.invoke(1)
-        customSniField.error = tr("Masukkan domain SNI", "Enter an SNI domain")
+        pageSwitcher?.invoke(0)
+        sniField.error = tr("Masukkan domain SNI", "Enter an SNI domain")
         sniInput.requestFocus()
         return null
     }
 
-    private fun buildConfigPage(): View {
-        val content = pageContent()
-
+    private fun buildConnectionSettings(): View {
         val config = card()
         val configBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            setPadding(dp(16), dp(16), dp(16), dp(8))
         }
-        sniDropdown = MaterialAutoCompleteTextView(this).apply {
-            keyListener = null
-            setTextColor(textColor)
-            setSimpleItems(sniOptions().toTypedArray())
-            setOnItemClickListener { _, _, position, _ ->
-                showSniChoice(position)
-                markDirty()
-            }
-        }
-        val sniField = outlinedField("SNI", sniDropdown).apply {
-            endIconMode = TextInputLayout.END_ICON_DROPDOWN_MENU
-        }
-        sniInput = input("contoh.com").apply {
+        val connectionHeader = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        connectionHeader.addView(TextView(this).apply {
+            text = "WARP / MASQUE"
+            textSize = 11f
+            letterSpacing = 0.12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setTextColor(darkAccent)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        connectionHeader.addView(TextView(this).apply {
+            text = "443"
+            textSize = 11f
+            setTextColor(subText)
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            background = round(surface2, dp(4))
+        })
+        configBox.addView(connectionHeader, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(16) })
+        sniInput = input(DEFAULT_SNI).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         }
-        customSniField = outlinedField(tr("Domain SNI", "SNI domain"), sniInput)
-        showSniChoice(SNI_PRESETS.size)
+        sniField = outlinedField("SNI", sniInput)
         endpointInput = input("162.159.198.2").apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         }
-        defaultBtn = secondaryButton(tr("Gunakan alamat bawaan", "Use default address"))
+        defaultBtn = secondaryButton(tr("Pulihkan server bawaan", "Reset server address")).apply {
+            backgroundTintList = ColorStateList.valueOf(surface)
+            textSize = 12f
+        }
         configStateText = infoLine("")
         configBox.addView(sniField)
-        configBox.addView(customSniField, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
         configBox.addView(outlinedField(tr("Alamat server (IP)", "Server address (IP)"), endpointInput),
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
-        configBox.addView(defaultBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        configBox.addView(defaultBtn, LinearLayout.LayoutParams(-2, dp(48)).apply { gravity = Gravity.END })
         configBox.addView(configStateText)
         config.addView(configBox)
-        content.addView(config)
-
-        content.addView(sectionTitle(tr("Profil tersimpan", "Saved profiles")))
-        val profileCard = card()
-        val profileBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(10), dp(16), dp(14)) }
-        profileSpinner = Spinner(this).apply { contentDescription = tr("Pilih profil untuk diedit", "Select a profile to edit") }
-        profileNameInput = input("")
-        saveNewProfileBtn = secondaryButton(tr("Simpan profil baru", "Save new profile"))
-        overwriteProfileBtn = secondaryButton(tr("Perbarui profil pilihan", "Update selected profile"))
-        deleteProfileBtn = secondaryButton(tr("Hapus profil pilihan", "Delete selected profile"))
-        profileBox.addView(profileSpinner, LinearLayout.LayoutParams(-1, dp(48)))
-        profileBox.addView(outlinedField(tr("Nama profil", "Profile name"), profileNameInput))
-        profileBox.addView(saveNewProfileBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
-        profileBox.addView(overwriteProfileBtn)
-        profileBox.addView(deleteProfileBtn)
-        profileCard.addView(profileBox)
-        content.addView(profileCard)
-
-        content.addView(sectionTitle(tr("Bahasa", "Language")))
-        val languageBox = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        languageIdButton = secondaryButton("Indonesia").apply { setOnClickListener { setLanguage(false) } }
-        languageEnButton = secondaryButton("English").apply { setOnClickListener { setLanguage(true) } }
-        languageBox.addView(languageIdButton, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
-        languageBox.addView(languageEnButton, LinearLayout.LayoutParams(0, -2, 1f))
-        content.addView(languageBox)
-        return content
+        return config
     }
 
     private fun buildAppsPage(): View {
@@ -409,7 +381,7 @@ class MainActivity : Activity() {
 
     private fun pageContent() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(16), dp(16), dp(16), dp(24))
+        setPadding(dp(20), dp(22), dp(20), dp(24))
         setBackgroundColor(bg)
     }
 
@@ -417,26 +389,34 @@ class MainActivity : Activity() {
         text = label
         isAllCaps = false
         textSize = 14f
-        cornerRadius = dp(10)
+        cornerRadius = 0
         minimumHeight = dp(48)
         setPadding(dp(2), 0, dp(2), 0)
         insetTop = 0
         insetBottom = 0
-        setTextColor(subText)
-        backgroundTintList = ColorStateList.valueOf(surface)
+        setTextColor(Color.rgb(155, 177, 191))
+        backgroundTintList = ColorStateList.valueOf(navy)
+        rippleColor = ColorStateList.valueOf(Color.rgb(24, 60, 70))
     }
 
     private fun setTabSelected(button: MaterialButton, selected: Boolean) {
-        button.setTextColor(if (selected) onPrimary else subText)
-        button.backgroundTintList = ColorStateList.valueOf(if (selected) primary else surface)
+        button.setTextColor(if (selected) cyan else Color.rgb(155, 177, 191))
+        button.backgroundTintList = ColorStateList.valueOf(navy)
+        val indicator = if (selected) GradientDrawable().apply {
+            setColor(cyan)
+            setBounds(0, 0, dp(32), dp(2))
+        } else null
+        button.setCompoundDrawables(null, null, null, indicator)
+        button.compoundDrawablePadding = dp(6)
+        button.typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         button.isSelected = selected
     }
 
     private fun sectionHeader(title: String, desc: String) = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(2), 0, dp(2), dp(8))
-        addView(TextView(this@MainActivity).apply { text = title; textSize = 20f; setTextColor(textColor); setTypeface(null, Typeface.BOLD) })
-        addView(TextView(this@MainActivity).apply { text = desc; textSize = 12f; setTextColor(subText); setPadding(0, dp(2), 0, 0) })
+        setPadding(0, 0, 0, dp(20))
+        addView(TextView(this@MainActivity).apply { text = title; textSize = 22f; setTextColor(textColor); typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL) })
+        addView(TextView(this@MainActivity).apply { text = desc; textSize = 13f; setTextColor(subText); setPadding(0, dp(4), 0, 0) })
     }
 
     private fun card() = MaterialCardView(this).apply {
@@ -450,7 +430,7 @@ class MainActivity : Activity() {
     private fun secondaryButton(label: String) = MaterialButton(this).apply {
         text = label
         isAllCaps = false
-        textSize = 14f
+        textSize = 13f
         cornerRadius = dp(10)
         minimumHeight = dp(48)
         insetTop = 0
@@ -461,7 +441,8 @@ class MainActivity : Activity() {
     }
     private fun sectionTitle(s: String) = TextView(this).apply {
         text = s
-        textSize = 14f
+        textSize = 11f
+        letterSpacing = 0.1f
         setTextColor(subText)
         setTypeface(null, Typeface.BOLD)
         setPadding(dp(2), dp(18), dp(2), dp(8))
@@ -470,19 +451,20 @@ class MainActivity : Activity() {
         setHint(hint)
         setTextColor(textColor)
         setHintTextColor(subText)
+        textSize = 17f
         isSingleLine = true
     }
     private fun outlinedField(label: String, edit: EditText) = TextInputLayout(this).apply {
         hint = label
         placeholderText = edit.hint
         edit.hint = null
-        boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
-        boxBackgroundColor = surface
-        val corner = dp(8).toFloat()
+        boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_FILLED
+        boxBackgroundColor = surface2
+        val corner = dp(6).toFloat()
         setBoxCornerRadii(corner, corner, corner, corner)
         boxStrokeColor = darkAccent
-        edit.minimumHeight = dp(56)
-        edit.setPaddingRelative(dp(14), dp(12), dp(14), dp(12))
+        edit.minimumHeight = dp(64)
+        edit.setPaddingRelative(dp(14), dp(24), dp(14), dp(8))
         addView(edit, LinearLayout.LayoutParams(-1, -2))
     }
     private fun infoLine(s: String) = TextView(this).apply {
@@ -514,7 +496,6 @@ class MainActivity : Activity() {
     private fun saveInputs() {
         prefs.edit()
             .putString("sni", selectedSni())
-            .putBoolean("sniCustom", isCustomSni())
             .putString("endpoint", normalizedEndpoint())
             .putInt("connectPort", normalizedPort())
             .putBoolean("splitMode", splitModeSwitch.isChecked)
@@ -523,136 +504,15 @@ class MainActivity : Activity() {
         configDirty = false
         updateConfigState(); updateModeUi()
     }
-    private fun loadProfiles() {
-        profiles.clear()
-        val raw = prefs.getString("profilesJson", "") ?: ""
-        runCatching {
-            val arr = JSONArray(raw)
-            for (i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
-                val sni = o.optString("sni", DEFAULT_SNI).trim().ifBlank { DEFAULT_SNI }
-                profiles[o.getString("name")] = Profile(
-                    sni,
-                    o.optString("endpoint", "162.159.198.2"),
-                    o.optBoolean("sniCustom", sni !in SNI_PRESETS)
-                )
-            }
-        }
-        if (profiles.isEmpty()) {
-            profiles["Utama 443"] = Profile(DEFAULT_SNI, "162.159.198.2", customSni = true)
-            persistProfiles()
-        }
-        if (!profiles.containsKey(currentProfileName())) setCurrentProfileName(profiles.keys.first())
-        refreshProfileSpinner(editingProfileName)
-    }
-    private fun persistProfiles() {
-        val arr = JSONArray()
-        profiles.forEach { (name, profile) ->
-            arr.put(JSONObject().put("name", name).put("sni", profile.sni).put("endpoint", profile.endpoint)
-                .put("port", normalizedPort()).put("sniCustom", profile.customSni))
-        }
-        prefs.edit().putString("profilesJson", arr.toString()).apply()
-    }
-    private fun refreshProfileSpinner(preferredName: String = editingProfileName) {
-        val names = profiles.keys.toList()
-        editingProfileName = preferredName.takeIf { it in profiles }
-            ?: currentProfileName().takeIf { it in profiles } ?: names.firstOrNull().orEmpty()
-        setupProfileSpinner(profileSpinner, names, editingProfileName) { name ->
-            if (name != editingProfileName) {
-                editingProfileName = name
-                applyProfileToInputs(name, persist = false)
-            }
-        }
-        refreshHomeProfileSpinner()
-    }
-    private fun refreshHomeProfileSpinner() {
-        setupProfileSpinner(homeProfileSpinner, profiles.keys.toList(), currentProfileName()) { name ->
-            if (name == currentProfileName()) return@setupProfileSpinner
-            if (vpnRunning) {
-                homeProfileSpinner.setSelection(profiles.keys.indexOf(currentProfileName()), false)
-                toast(tr("Putuskan VPN dulu sebelum mengganti profil", "Disconnect VPN before switching profile"))
-            } else {
-                switchHomeProfile(name)
-            }
-        }
-    }
-    private fun setupProfileSpinner(spinner: Spinner, names: List<String>, selected: String, onSelect: (String) -> Unit) {
-        spinner.onItemSelectedListener = null
-        spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, names).apply {
-            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        }
-        val index = names.indexOf(selected)
-        if (index >= 0) spinner.setSelection(index, false)
-        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                names.getOrNull(position)?.let(onSelect)
-            }
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-        }
-    }
-    private fun selectedProfileName(): String = profileSpinner.selectedItem?.toString().orEmpty()
-    private fun currentProfileName(): String = prefs.getString("currentProfileName", "")?.orEmpty() ?: ""
-    private fun setCurrentProfileName(name: String) { prefs.edit().putString("currentProfileName", name).apply() }
-    private fun switchHomeProfile(name: String) {
-        applyProfileToInputs(name, persist = true)
-        setCurrentProfileName(name)
-        editingProfileName = name
-        profileSpinner.setSelection(profiles.keys.indexOf(name), false)
-        toast(tr("Profil diganti: $name", "Profile switched: $name"))
-    }
-    private fun applyProfileToInputs(name: String, persist: Boolean) {
-        val p = profiles[name] ?: return
-        restoreSni(p.sni, p.customSni)
-        endpointInput.setText(p.endpoint)
-        profileNameInput.setText(name)
-        if (persist) { markDirty(); saveInputs() }
-    }
-    private fun saveAsNewProfile() {
-        val sni = requireSni() ?: return
-        val base = profileNameInput.text?.toString().orEmpty().trim().ifBlank { normalizedEndpoint() }
-        val name = uniqueProfileName(base)
-        profiles[name] = Profile(sni, normalizedEndpointHost(), isCustomSni())
-        if (currentProfileName().isBlank()) setCurrentProfileName(name)
-        persistProfiles()
-        refreshProfileSpinner(name)
-        profileNameInput.setText(name)
-        toast(tr("Disimpan sebagai profil baru: $name", "Saved as new profile: $name"))
-    }
-    private fun overwriteSelectedProfile() {
-        val selected = selectedProfileName()
-        val name = selected.ifBlank { profileNameInput.text?.toString().orEmpty().trim() }
-        if (name.isBlank()) return toast(tr("Pilih profil dulu", "Select a profile first"))
-        val sni = requireSni() ?: return
-        profiles[name] = Profile(sni, normalizedEndpointHost(), isCustomSni())
-        persistProfiles()
-        refreshProfileSpinner(name)
-        profileNameInput.setText(name)
-        toast(tr("Profil saat ini ditimpa: $name", "Current profile overwritten: $name"))
-    }
-    private fun uniqueProfileName(base: String): String {
-        if (!profiles.containsKey(base)) return base
-        var index = 2
-        while (profiles.containsKey("$base $index")) index++
-        return "$base $index"
-    }
-    private fun deleteSelectedProfile() {
-        val name = selectedProfileName()
-        if (name.isBlank()) return
-        profiles.remove(name)
-        if (currentProfileName() == name) setCurrentProfileName(profiles.keys.firstOrNull().orEmpty())
-        persistProfiles()
-        refreshProfileSpinner()
-        profileNameInput.setText(editingProfileName)
-        toast(tr("Dihapus: $name", "Deleted: $name"))
-    }
-
     private fun loadSavedState() {
-        loadProfiles()
         val saved = prefs.getString("endpoint", "162.159.198.2:443") ?: "162.159.198.2:443"
         endpointInput.setText(parseEndpointHost(saved))
-        val savedSni = prefs.getString("sni", DEFAULT_SNI).orEmpty().trim().ifBlank { DEFAULT_SNI }
-        restoreSni(savedSni, prefs.getBoolean("sniCustom", false))
-        profileNameInput.setText(editingProfileName)
+        var savedSni = prefs.getString("sni", DEFAULT_SNI).orEmpty().trim().ifBlank { DEFAULT_SNI }
+        if (!prefs.getBoolean("directSniMigrated", false)) {
+            if (savedSni == "www.visa.cn") savedSni = DEFAULT_SNI
+            prefs.edit().putString("sni", savedSni).putBoolean("directSniMigrated", true).apply()
+        }
+        sniInput.setText(savedSni)
         selectedPackages.clear(); selectedPackages.addAll(prefs.getStringSet("selectedPackages", emptySet()) ?: emptySet())
         splitModeSwitch.isChecked = prefs.getBoolean("splitMode", false)
         configDirty = false
@@ -775,16 +635,9 @@ class MainActivity : Activity() {
         statusText.text = extra
         statusText.visibility = if (extra.isBlank()) View.GONE else View.VISIBLE
         statusBanner.setTextColor(if (vpnRunning) green else textColor)
-        connectButton.text = if (vpnRunning) tr("Putuskan VPN", "Disconnect VPN") else tr("Hubungkan VPN", "Connect VPN")
-        val dark = android.content.res.ColorStateList.valueOf(darkAccent)
-        connectButton.backgroundTintList = dark
-        connectButton.setTextColor(Color.WHITE)
-        if (::languageIdButton.isInitialized) {
-            languageIdButton.backgroundTintList = android.content.res.ColorStateList.valueOf(if (!useEnglish) darkAccent else primary)
-            languageEnButton.backgroundTintList = android.content.res.ColorStateList.valueOf(if (useEnglish) darkAccent else primary)
-            languageIdButton.setTextColor(if (!useEnglish) Color.WHITE else onPrimary)
-            languageEnButton.setTextColor(if (useEnglish) Color.WHITE else onPrimary)
-        }
+        statusIndicator.setTextColor(if (vpnRunning) green else subText)
+        connectButton.contentDescription = if (vpnRunning) tr("Putuskan VPN", "Disconnect VPN") else tr("Hubungkan VPN", "Connect VPN")
+        connectButton.backgroundTintList = ColorStateList.valueOf(if (vpnRunning) navy else darkAccent)
         updateConfigState()
     }
     private fun connectVpn() {
