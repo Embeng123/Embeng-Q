@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.EmbengQ" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="colorPrimary">#F2A766</item>
-        <item name="colorOnPrimary">#4E2B17</item>
-        <item name="colorPrimaryContainer">#FFEEE0</item>
-        <item name="colorOnPrimaryContainer">#4E2B17</item>
-        <item name="colorSecondary">#FFD5A8</item>
-        <item name="colorSecondaryContainer">#FFF4EA</item>
-        <item name="colorOnSecondaryContainer">#302720</item>
+    <style name="Theme.EmbengQ" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">#2454B0</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">#E2ECFF</item>
+        <item name="colorOnPrimaryContainer">#183D85</item>
+        <item name="colorSecondary">#4D5B71</item>
+        <item name="colorSecondaryContainer">#E2ECFF</item>
+        <item name="colorOnSecondaryContainer">#172233</item>
         <item name="colorSurface">#FFFFFF</item>
-        <item name="colorOnSurface">#302720</item>
-        <item name="colorSurfaceVariant">#FFEEE0</item>
-        <item name="colorOnSurfaceVariant">#6F5B4C</item>
-        <item name="colorOutline">#DDBFA7</item>
-        <item name="android:colorAccent">#F2A766</item>
-        <item name="android:windowBackground">#FFF7EF</item>
-        <item name="android:statusBarColor">#FFFCF9</item>
-        <item name="android:navigationBarColor">#FFFCF9</item>
+        <item name="colorOnSurface">#172233</item>
+        <item name="colorSurfaceVariant">#F0F4FA</item>
+        <item name="colorOnSurfaceVariant">#4D5B71</item>
+        <item name="colorOutline">#748199</item>
+        <item name="android:colorAccent">#2454B0</item>
+        <item name="android:windowBackground">#F4F6FA</item>
+        <item name="android:statusBarColor">#FFFFFF</item>
+        <item name="android:navigationBarColor">#FFFFFF</item>
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>

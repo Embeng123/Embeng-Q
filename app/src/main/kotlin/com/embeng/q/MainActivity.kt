@@ -3,6 +3,7 @@ package com.embeng.q
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -12,13 +13,12 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
+import android.text.InputType
 import android.text.TextWatcher
 import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
-import android.text.method.ScrollingMovementMethod
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.checkbox.MaterialCheckBox
@@ -26,6 +26,7 @@ import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.divider.MaterialDivider
 import usqueandroid.Usqueandroid
 import java.io.File
@@ -34,8 +35,13 @@ import org.json.JSONObject
 import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
-    companion object { private const val REQ_VPN = 1001 }
+    companion object {
+        private const val REQ_VPN = 1001
+        private const val DEFAULT_SNI = "www.visa.cn"
+        private val SNI_PRESETS = listOf("contoh.com", "bb.com", "hh.com")
+    }
     data class AppEntry(val label: String, val packageName: String)
+    private data class Profile(val sni: String, val endpoint: String, val customSni: Boolean)
 
     private val handler = Handler(Looper.getMainLooper())
     private val executor = Executors.newSingleThreadExecutor()
@@ -43,25 +49,22 @@ class MainActivity : Activity() {
     private val configFile by lazy { File(filesDir, "config.json") }
 
     private lateinit var endpointInput: TextInputEditText
+    private lateinit var sniDropdown: MaterialAutoCompleteTextView
     private lateinit var sniInput: TextInputEditText
+    private lateinit var customSniField: TextInputLayout
     private lateinit var statusBanner: TextView
     private lateinit var statusText: TextView
     private lateinit var speedText: TextView
     private lateinit var configStateText: TextView
     private lateinit var logText: TextView
-    private lateinit var ipv4Text: TextView
-    private lateinit var ipv6Text: TextView
-    private lateinit var modeValue: TextView
     private lateinit var modeHint: TextView
     private lateinit var splitModeSwitch: MaterialSwitch
     private lateinit var appSearchInput: TextInputEditText
-    private lateinit var appSection: MaterialCardView
     private lateinit var appListContainer: LinearLayout
     private lateinit var appCountText: TextView
     private lateinit var connectButton: MaterialButton
     private lateinit var defaultBtn: MaterialButton
     private lateinit var homeProfileSpinner: Spinner
-    private lateinit var currentProfileText: TextView
     private lateinit var profileSpinner: Spinner
     private lateinit var profileNameInput: TextInputEditText
     private lateinit var saveNewProfileBtn: MaterialButton
@@ -76,11 +79,10 @@ class MainActivity : Activity() {
     private var vpnRunning = false
     private var configDirty = false
     private var appsLoaded = false
-    private var suppressProfileSelection = false
+    private var editingProfileName = ""
+    private var sniChoice = SNI_PRESETS.size
     private var currentPageIndex = 0
     private var pageSwitcher: ((Int) -> Unit)? = null
-    private var swipeDownX = 0f
-    private var swipeDownY = 0f
     private var lastRxBytes = 0L
     private var lastTxBytes = 0L
     private var lastSpeedTs = 0L
@@ -90,22 +92,20 @@ class MainActivity : Activity() {
             handler.postDelayed(this, 1000)
         }
     }
-    private val profiles = linkedMapOf<String, Triple<String, String, Int>>()
+    private val profiles = linkedMapOf<String, Profile>()
     private val allApps = mutableListOf<AppEntry>()
     private val selectedPackages = linkedSetOf<String>()
 
-    private val bg = Color.rgb(255, 248, 242)
-    private val surface = Color.rgb(255, 255, 255)
-    private val surface2 = Color.rgb(255, 238, 224)
-    private val primary = Color.rgb(246, 196, 155) // soft orange / oranye muda
-    private val darkAccent = Color.rgb(205, 126, 73)
-    private val mango = Color.rgb(255, 224, 195)
-    private val onPrimary = Color.rgb(82, 49, 28)
-    private val textColor = Color.rgb(48, 39, 32)
-    private val subText = Color.rgb(111, 91, 76)
-    private val outline = Color.rgb(232, 211, 194)
-    private val green = Color.rgb(49, 145, 104)
-    private val danger = Color.rgb(188, 77, 77)
+    private val bg = Color.rgb(244, 246, 250)
+    private val surface = Color.WHITE
+    private val surface2 = Color.rgb(240, 244, 250)
+    private val primary = Color.rgb(226, 236, 255)
+    private val darkAccent = Color.rgb(36, 84, 176)
+    private val onPrimary = Color.rgb(24, 61, 133)
+    private val textColor = Color.rgb(23, 34, 51)
+    private val subText = Color.rgb(77, 91, 113)
+    private val outline = Color.rgb(215, 223, 235)
+    private val green = Color.rgb(23, 110, 66)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -125,31 +125,23 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        when (ev.action) {
-            MotionEvent.ACTION_DOWN -> {
-                swipeDownX = ev.rawX
-                swipeDownY = ev.rawY
-            }
-            MotionEvent.ACTION_UP -> {
-                val dx = ev.rawX - swipeDownX
-                val dy = ev.rawY - swipeDownY
-                val threshold = dp(72)
-                if (kotlin.math.abs(dx) > threshold && kotlin.math.abs(dx) > kotlin.math.abs(dy) * 1.4f) {
-                    if (dx < 0 && currentPageIndex < 2) { pageSwitcher?.invoke(currentPageIndex + 1); return true }
-                    if (dx > 0 && currentPageIndex > 0) { pageSwitcher?.invoke(currentPageIndex - 1); return true }
-                }
-            }
-        }
-        return super.dispatchTouchEvent(ev)
-    }
-
     private fun tr(id: String, en: String): String = if (useEnglish) en else id
     private fun setLanguage(en: Boolean) {
+        if (en == useEnglish) return
+        val choice = sniChoice
+        val custom = sniInput.text?.toString().orEmpty()
+        val endpoint = endpointInput.text?.toString().orEmpty()
+        val profileName = profileNameInput.text?.toString().orEmpty()
+        val dirty = configDirty
         useEnglish = en
         prefs.edit().putBoolean("useEnglish", useEnglish).apply()
         buildUi()
         loadSavedState()
+        sniInput.setText(custom)
+        showSniChoice(choice)
+        endpointInput.setText(endpoint)
+        profileNameInput.setText(profileName)
+        configDirty = dirty
         refreshAppList()
         refreshState()
     }
@@ -161,22 +153,20 @@ class MainActivity : Activity() {
         }
         val toolbar = MaterialToolbar(this).apply {
             title = "Embeng-Q"
-            subtitle = null
             setTitleTextColor(textColor)
-            setSubtitleTextColor(subText)
-            setBackgroundColor(Color.rgb(255, 252, 249))
-            elevation = dp(2).toFloat()
-            setPadding(dp(8), 0, dp(8), 0)
+            setBackgroundColor(surface)
+            setPadding(dp(4), 0, dp(4), 0)
         }
         val tabs = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-            setBackgroundColor(Color.rgb(255, 252, 249))
+            setPadding(dp(12), 0, dp(12), dp(8))
+            setBackgroundColor(surface)
         }
         val pageHost = FrameLayout(this).apply { setBackgroundColor(bg) }
         root.addView(toolbar, LinearLayout.LayoutParams(-1, dp(56)))
-        root.addView(tabs, LinearLayout.LayoutParams(-1, dp(48)))
+        root.addView(tabs, LinearLayout.LayoutParams(-1, dp(56)))
+        root.addView(MaterialDivider(this).apply { dividerColor = outline })
         root.addView(pageHost, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
 
@@ -186,24 +176,21 @@ class MainActivity : Activity() {
             (child.parent as? ViewGroup)?.removeView(child)
             addView(child)
         }
-        val overviewTab = tabButton(tr("Beranda", "Overview"))
-        val configTab = tabButton(tr("Konfigurasi", "Config"))
+        val overviewTab = tabButton(tr("Beranda", "Home"))
+        val configTab = tabButton(tr("Pengaturan", "Settings"))
         val appsTab = tabButton(tr("Aplikasi", "Apps"))
         val tabsList = listOf(overviewTab, configTab, appsTab)
         tabsList.forEachIndexed { index, b ->
-            tabs.addView(b, LinearLayout.LayoutParams(0, dp(36), 1f).apply { if (index < 2) rightMargin = dp(8) })
+            tabs.addView(b, LinearLayout.LayoutParams(0, -1, 1f).apply { if (index < 2) rightMargin = dp(4) })
         }
 
         val homePage = buildHomePage()
         val configPage = buildConfigPage()
         val appsPage = buildAppsPage()
-        val titles = listOf("Embeng-Q", tr("Konfigurasi Koneksi", "Connection Config"), tr("Pilih Aplikasi", "Select Apps"))
         val pages = listOf(homePage, configPage, appsPage)
         fun showIndex(index: Int) {
             val safe = index.coerceIn(0, pages.lastIndex)
             currentPageIndex = safe
-            toolbar.title = titles[safe]
-            toolbar.subtitle = null
             tabsList.forEachIndexed { i, b -> setTabSelected(b, i == safe) }
             if (safe == 2) ensureAppsLoaded()
             pageHost.removeAllViews()
@@ -213,8 +200,8 @@ class MainActivity : Activity() {
         overviewTab.setOnClickListener { showIndex(0) }
         configTab.setOnClickListener { showIndex(1) }
         appsTab.setOnClickListener { showIndex(2) }
-        pageSwitcher = { showIndex(it) }
-        showIndex(0)
+        pageSwitcher = ::showIndex
+        showIndex(currentPageIndex)
 
         defaultBtn.setOnClickListener {
             val defaultEndpoint = Usqueandroid.getDefaultEndpoint(configFile.absolutePath)
@@ -225,7 +212,7 @@ class MainActivity : Activity() {
         overwriteProfileBtn.setOnClickListener { overwriteSelectedProfile() }
         deleteProfileBtn.setOnClickListener { deleteSelectedProfile() }
         connectButton.setOnClickListener { if (vpnRunning) disconnectVpn() else connectVpn() }
-        sniInput.addTextChangedListener(dirtyWatcher())
+        sniInput.addTextChangedListener(dirtyWatcher { customSniField.error = null })
         endpointInput.addTextChangedListener(dirtyWatcher())
         appSearchInput.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -236,156 +223,183 @@ class MainActivity : Activity() {
 
     private fun buildHomePage(): View {
         val content = pageContent()
-        val hero = card().apply { setCardBackgroundColor(surface2) }
+        val hero = card()
         val heroBox = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(12), dp(18), dp(12))
-        }
-        val eyebrow = TextView(this).apply {
-            text = "VPN STATUS"
-            textSize = 12f
-            letterSpacing = 0.16f
-            setTextColor(onPrimary)
-            setTypeface(null, Typeface.BOLD)
+            setPadding(dp(16), dp(16), dp(16), dp(16))
         }
         statusBanner = TextView(this).apply {
-            text = tr("Tidak Terhubung", "Disconnected")
-            textSize = 28f
-            setTextColor(onPrimary)
+            textSize = 24f
+            setTextColor(textColor)
             setTypeface(null, Typeface.BOLD)
-            setPadding(0, dp(6), 0, 0)
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
-        statusText = TextView(this).apply {
-            text = tr("Status: Tidak Terhubung", "Status: Disconnected")
-            textSize = 14f
-            setTextColor(subText)
-            setPadding(0, dp(2), 0, dp(2))
-        }
+        statusText = infoLine("")
         speedText = TextView(this).apply {
             text = "↓ 0 B/s   ↑ 0 B/s"
             textSize = 14f
-            setTextColor(onPrimary)
+            setTextColor(subText)
             setTypeface(null, Typeface.BOLD)
-            setPadding(0, 0, 0, dp(10))
         }
-        homeProfileSpinner = Spinner(this).apply {
-            background = round(surface, dp(16), outline)
-            setPadding(dp(10), 0, dp(10), 0)
-        }
+        homeProfileSpinner = Spinner(this)
         connectButton = MaterialButton(this).apply {
             text = tr("Hubungkan VPN", "Connect VPN")
-            textSize = 15f
+            textSize = 16f
             gravity = Gravity.CENTER
-            setSingleLine(false)
-            maxLines = 2
-            setTextColor(Color.rgb(255, 255, 255))
-            backgroundTintList = android.content.res.ColorStateList.valueOf(darkAccent)
-            cornerRadius = dp(24)
-            minHeight = dp(52)
+            setTextColor(Color.WHITE)
+            backgroundTintList = ColorStateList.valueOf(darkAccent)
+            cornerRadius = dp(10)
+            minimumHeight = dp(52)
+            insetTop = 0
+            insetBottom = 0
             isAllCaps = false
         }
-        val actionRow = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        actionRow.addView(connectButton, LinearLayout.LayoutParams(-1, dp(52)))
-        heroBox.addView(eyebrow)
         heroBox.addView(statusBanner)
         heroBox.addView(statusText)
         heroBox.addView(speedText)
-        heroBox.addView(homeProfileSpinner, LinearLayout.LayoutParams(-1, dp(42)).apply { bottomMargin = dp(10) })
-        heroBox.addView(actionRow)
+        heroBox.addView(connectButton, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
         hero.addView(heroBox)
         content.addView(hero, LinearLayout.LayoutParams(-1, -2))
 
-        content.addView(sectionTitle(tr("Mode Proxy", "Proxy Mode")))
+        val profileLabel = sectionTitle(tr("Profil VPN", "VPN profile"))
+        homeProfileSpinner.id = View.generateViewId()
+        profileLabel.labelFor = homeProfileSpinner.id
+        content.addView(profileLabel)
+        val profileCard = card()
+        profileCard.addView(homeProfileSpinner, FrameLayout.LayoutParams(-1, dp(48)))
+        content.addView(profileCard)
+
+        content.addView(sectionTitle(tr("Akses VPN", "VPN access")))
         val modeCard = card()
         val modeBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(10), dp(16), dp(10)) }
-        modeValue = TextView(this).apply { text = tr("Mode Global", "Global Mode"); textSize = 18f; setTextColor(textColor); setTypeface(null, Typeface.BOLD) }
-        modeHint = TextView(this).apply { text = tr("Semua aplikasi lewat VPN. Di mode pisah, hanya aplikasi yang dipilih di halaman “Aplikasi” yang lewat VPN.", "All apps use VPN. In split mode, only selected apps use VPN."); textSize = 14f; setTextColor(subText); setPadding(0, dp(4), 0, dp(6)) }
+        modeHint = infoLine("")
         splitModeSwitch = MaterialSwitch(this).apply {
-            text = tr("Aktifkan split tunneling", "Enable split tunneling")
-            textSize = 16f
+            text = tr("Hanya aplikasi pilihan", "Selected apps only")
+            textSize = 15f
             setTextColor(textColor)
-            setPadding(0, dp(2), 0, 0)
+            minimumHeight = dp(48)
             setOnCheckedChangeListener { _, _ ->
                 markDirty(); saveSelectedApps(); updateModeUi(); refreshAppList()
             }
         }
-        modeBox.addView(modeValue)
-        modeBox.addView(modeHint)
         modeBox.addView(splitModeSwitch)
+        modeBox.addView(modeHint)
         modeCard.addView(modeBox)
         content.addView(modeCard)
 
-        ipv4Text = TextView(this)
-        ipv6Text = TextView(this)
-        configStateText = TextView(this)
-        logText = TextView(this).apply {
-            text = tr("Ketuk Hubungkan. Koneksi pertama akan mendaftar otomatis dan memulai VPN.", "Tap Connect. First launch will register automatically and start VPN.")
-        }
-
-        val languageCard = card()
-        val languageBox = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(16), dp(12), dp(16), dp(12)) }
-        languageIdButton = secondaryButton("Indonesia").apply { setOnClickListener { setLanguage(false) } }
-        languageEnButton = secondaryButton("English").apply { setOnClickListener { setLanguage(true) } }
-        languageBox.addView(languageIdButton, LinearLayout.LayoutParams(0, dp(50), 1f).apply { rightMargin = dp(10) })
-        languageBox.addView(languageEnButton, LinearLayout.LayoutParams(0, dp(50), 1f))
-        languageCard.addView(languageBox)
-        content.addView(languageCard, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(28) })
+        logText = TextView(this)
         return content
+    }
+
+    private fun sniOptions() = SNI_PRESETS + tr("Custom (isi sendiri)", "Custom (enter your own)")
+
+    private fun showSniChoice(choice: Int) {
+        sniChoice = choice
+        sniDropdown.setText(sniOptions()[choice], false)
+        customSniField.visibility = if (choice == SNI_PRESETS.size) View.VISIBLE else View.GONE
+        customSniField.error = null
+    }
+
+    private fun restoreSni(value: String, useCustom: Boolean = false) {
+        val preset = SNI_PRESETS.indexOf(value)
+        val choice = if (useCustom || preset < 0) SNI_PRESETS.size else preset
+        sniInput.setText(if (choice == SNI_PRESETS.size) value else "")
+        showSniChoice(choice)
+    }
+
+    private fun selectedSni(): String = SNI_PRESETS.getOrNull(sniChoice) ?: sniInput.text?.toString().orEmpty().trim()
+    private fun isCustomSni(): Boolean = sniChoice == SNI_PRESETS.size
+
+    private fun requireSni(): String? {
+        val value = selectedSni()
+        if (value.isNotBlank()) return value
+        pageSwitcher?.invoke(1)
+        customSniField.error = tr("Masukkan domain SNI", "Enter an SNI domain")
+        sniInput.requestFocus()
+        return null
     }
 
     private fun buildConfigPage(): View {
         val content = pageContent()
-        content.addView(sectionHeader(tr("Konfigurasi Koneksi", "Connection Config"), tr("Beralih antar profil tersimpan dengan cepat.", "Switch between saved profiles quickly.")))
 
+        val config = card()
+        val configBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+        }
+        sniDropdown = MaterialAutoCompleteTextView(this).apply {
+            keyListener = null
+            setTextColor(textColor)
+            setSimpleItems(sniOptions().toTypedArray())
+            setOnItemClickListener { _, _, position, _ ->
+                showSniChoice(position)
+                markDirty()
+            }
+        }
+        val sniField = outlinedField("SNI", sniDropdown).apply {
+            endIconMode = TextInputLayout.END_ICON_DROPDOWN_MENU
+        }
+        sniInput = input("contoh.com").apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        }
+        customSniField = outlinedField(tr("Domain SNI", "SNI domain"), sniInput)
+        showSniChoice(SNI_PRESETS.size)
+        endpointInput = input("162.159.198.2").apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        }
+        defaultBtn = secondaryButton(tr("Gunakan alamat bawaan", "Use default address"))
+        configStateText = infoLine("")
+        configBox.addView(sniField)
+        configBox.addView(customSniField, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        configBox.addView(outlinedField(tr("Alamat server (IP)", "Server address (IP)"), endpointInput),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        configBox.addView(defaultBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        configBox.addView(configStateText)
+        config.addView(configBox)
+        content.addView(config)
+
+        content.addView(sectionTitle(tr("Profil tersimpan", "Saved profiles")))
         val profileCard = card()
-        val profileBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(10)) }
-        profileSpinner = Spinner(this).apply { background = round(surface2, dp(16), outline); setPadding(dp(10), 0, dp(10), 0) }
-        profileNameInput = input(tr("Nama Profil", "Profile Name"), tr("contoh: Visa 443 / Cloudflare 443", "e.g. Visa 443 / Cloudflare 443"))
-        saveNewProfileBtn = secondaryButton(tr("Simpan sebagai Baru", "Save as New"))
-        overwriteProfileBtn = secondaryButton(tr("Timpa Profil Saat Ini", "Overwrite Current"))
-        deleteProfileBtn = secondaryButton(tr("Hapus Profil", "Delete Profile"))
-        profileBox.addView(TextView(this).apply { text = tr("Profil", "Profiles"); textSize = 18f; setTextColor(textColor); setTypeface(null, Typeface.BOLD) })
-        profileBox.addView(TextView(this).apply { text = tr("Simpan SNI / Endpoint saat ini untuk beralih dengan cepat.", "Save current SNI / Endpoint for quick switching."); textSize = 12f; setTextColor(subText); setPadding(0, dp(2), 0, dp(6)) })
-        profileBox.addView(profileSpinner, LinearLayout.LayoutParams(-1, dp(42)))
-        profileBox.addView(inputWrap(tr("Nama Profil", "Profile Name"), profileNameInput), LinearLayout.LayoutParams(-1, dp(70)).apply { topMargin = dp(5) })
-        val profileActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        profileActions.addView(overwriteProfileBtn, LinearLayout.LayoutParams(0, dp(42), 1f).apply { rightMargin = dp(8) })
-        profileActions.addView(saveNewProfileBtn, LinearLayout.LayoutParams(0, dp(42), 1f))
-        profileBox.addView(profileActions, LinearLayout.LayoutParams(-1, dp(48)))
-        profileBox.addView(deleteProfileBtn, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(5) })
+        val profileBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(10), dp(16), dp(14)) }
+        profileSpinner = Spinner(this).apply { contentDescription = tr("Pilih profil untuk diedit", "Select a profile to edit") }
+        profileNameInput = input("")
+        saveNewProfileBtn = secondaryButton(tr("Simpan profil baru", "Save new profile"))
+        overwriteProfileBtn = secondaryButton(tr("Perbarui profil pilihan", "Update selected profile"))
+        deleteProfileBtn = secondaryButton(tr("Hapus profil pilihan", "Delete selected profile"))
+        profileBox.addView(profileSpinner, LinearLayout.LayoutParams(-1, dp(48)))
+        profileBox.addView(outlinedField(tr("Nama profil", "Profile name"), profileNameInput))
+        profileBox.addView(saveNewProfileBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        profileBox.addView(overwriteProfileBtn)
+        profileBox.addView(deleteProfileBtn)
         profileCard.addView(profileBox)
         content.addView(profileCard)
 
-        content.addView(sectionTitle(tr("Koneksi Saat Ini", "Current Connection")))
-        val config = card()
-        val configBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(8), dp(14), dp(8)) }
-        sniInput = input("SNI", "www.visa.cn")
-        endpointInput = input("Endpoint IP", "162.159.198.2")
-        defaultBtn = secondaryButton(tr("Muat Endpoint Default", "Load Default Endpoint"))
-        configBox.addView(compactInputWrap("SNI", sniInput))
-        configBox.addView(compactInputWrap("Endpoint IP", endpointInput))
-        configBox.addView(defaultBtn, LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(3) })
-        config.addView(configBox)
-        content.addView(config)
+        content.addView(sectionTitle(tr("Bahasa", "Language")))
+        val languageBox = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        languageIdButton = secondaryButton("Indonesia").apply { setOnClickListener { setLanguage(false) } }
+        languageEnButton = secondaryButton("English").apply { setOnClickListener { setLanguage(true) } }
+        languageBox.addView(languageIdButton, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
+        languageBox.addView(languageEnButton, LinearLayout.LayoutParams(0, -2, 1f))
+        content.addView(languageBox)
         return content
     }
 
     private fun buildAppsPage(): View {
         val content = pageContent()
-        content.addView(sectionHeader(tr("Pilih Aplikasi", "Select Apps"), tr("Di sini hanya memilih aplikasi. Aktifkan split tunneling di Beranda.", "Only choose apps here. Enable split tunneling on Overview.")))
-        appSection = card()
+        content.addView(sectionHeader(tr("Pilih aplikasi", "Select apps"), tr("Aktifkan ‘Hanya aplikasi pilihan’ di Beranda untuk memakai daftar ini.", "Turn on ‘Selected apps only’ on Home to use this list.")))
+        val appSection = card()
         val appBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(14), dp(10), dp(14), dp(10)) }
-        appSearchInput = input(tr("Cari Aplikasi", "Search Apps"), tr("Nama aplikasi atau paket", "App name or package"))
+        appSearchInput = input(tr("Nama aplikasi atau paket", "App name or package"))
         appCountText = infoLine(tr("0 aplikasi dipilih", "0 apps selected"))
         appListContainer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        appBox.addView(inputWrap(tr("Cari", "Search"), appSearchInput))
+        appBox.addView(outlinedField(tr("Cari aplikasi", "Search apps"), appSearchInput))
         appBox.addView(appCountText)
         val appActions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         selectAllAppsBtn = secondaryButton(tr("Pilih Semua", "Select All")).apply { setOnClickListener { selectAllVisibleApps() } }
         clearAllAppsBtn = secondaryButton(tr("Batalkan Semua", "Select None")).apply { setOnClickListener { clearAllVisibleApps() } }
-        appActions.addView(selectAllAppsBtn, LinearLayout.LayoutParams(0, dp(40), 1f).apply { rightMargin = dp(8) })
-        appActions.addView(clearAllAppsBtn, LinearLayout.LayoutParams(0, dp(40), 1f))
-        appBox.addView(appActions, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(4) })
+        appActions.addView(selectAllAppsBtn, LinearLayout.LayoutParams(0, -1, 1f).apply { rightMargin = dp(8) })
+        appActions.addView(clearAllAppsBtn, LinearLayout.LayoutParams(0, -1, 1f))
+        appBox.addView(appActions, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
         appBox.addView(MaterialDivider(this).apply { dividerColor = outline }, LinearLayout.LayoutParams(-1, 1).apply { topMargin = dp(8); bottomMargin = dp(8) })
         appBox.addView(appListContainer)
         appSection.addView(appBox)
@@ -395,7 +409,7 @@ class MainActivity : Activity() {
 
     private fun pageContent() = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(14), dp(10), dp(14), dp(14))
+        setPadding(dp(16), dp(16), dp(16), dp(24))
         setBackgroundColor(bg)
     }
 
@@ -403,17 +417,19 @@ class MainActivity : Activity() {
         text = label
         isAllCaps = false
         textSize = 14f
-        cornerRadius = dp(18)
-        minHeight = dp(36)
+        cornerRadius = dp(10)
+        minimumHeight = dp(48)
+        setPadding(dp(2), 0, dp(2), 0)
         insetTop = 0
         insetBottom = 0
         setTextColor(subText)
-        backgroundTintList = android.content.res.ColorStateList.valueOf(surface2)
+        backgroundTintList = ColorStateList.valueOf(surface)
     }
 
     private fun setTabSelected(button: MaterialButton, selected: Boolean) {
         button.setTextColor(if (selected) onPrimary else subText)
-        button.backgroundTintList = android.content.res.ColorStateList.valueOf(if (selected) primary else surface2)
+        button.backgroundTintList = ColorStateList.valueOf(if (selected) primary else surface)
+        button.isSelected = selected
     }
 
     private fun sectionHeader(title: String, desc: String) = LinearLayout(this).apply {
@@ -424,9 +440,9 @@ class MainActivity : Activity() {
     }
 
     private fun card() = MaterialCardView(this).apply {
-        radius = dp(24).toFloat()
+        radius = dp(12).toFloat()
         cardElevation = 0f
-        strokeWidth = 1
+        strokeWidth = dp(1)
         strokeColor = outline
         setCardBackgroundColor(surface)
         useCompatPadding = false
@@ -435,72 +451,39 @@ class MainActivity : Activity() {
         text = label
         isAllCaps = false
         textSize = 14f
-        cornerRadius = dp(22)
+        cornerRadius = dp(10)
+        minimumHeight = dp(48)
+        insetTop = 0
+        insetBottom = 0
         setTextColor(onPrimary)
-        backgroundTintList = android.content.res.ColorStateList.valueOf(primary)
+        backgroundTintList = ColorStateList.valueOf(surface2)
         strokeWidth = 0
-        elevation = dp(1).toFloat()
     }
     private fun sectionTitle(s: String) = TextView(this).apply {
         text = s
         textSize = 14f
         setTextColor(subText)
         setTypeface(null, Typeface.BOLD)
-        setPadding(dp(4), dp(10), dp(4), dp(6))
+        setPadding(dp(2), dp(18), dp(2), dp(8))
     }
-    private fun input(label: String, hint: String) = TextInputEditText(this).apply {
+    private fun input(hint: String) = TextInputEditText(this).apply {
         setHint(hint)
         setTextColor(textColor)
-        setHintTextColor(Color.rgb(150, 123, 103))
-        textSize = 14f
+        setHintTextColor(subText)
         isSingleLine = true
     }
-    private fun inputWrap(label: String, edit: TextInputEditText) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        layoutParams = LinearLayout.LayoutParams(-1, dp(70)).apply { bottomMargin = dp(5) }
-        addView(TextView(this@MainActivity).apply {
-            text = label
-            textSize = 12f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(subText)
-            setPadding(dp(2), 0, dp(2), dp(4))
-        })
-        addView(TextInputLayout(this@MainActivity).apply {
-            isHintEnabled = false
-            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
-            boxBackgroundColor = surface
-            setBoxCornerRadii(dp(18).toFloat(), dp(18).toFloat(), dp(18).toFloat(), dp(18).toFloat())
-            setBoxStrokeColor(primary)
-            addView(edit)
-        }, LinearLayout.LayoutParams(-1, dp(50)))
-    }
-    private fun compactInputWrap(label: String, edit: TextInputEditText) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        layoutParams = LinearLayout.LayoutParams(-1, dp(58)).apply { bottomMargin = dp(2) }
-        addView(TextView(this@MainActivity).apply {
-            text = label
-            textSize = 11f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(subText)
-            setPadding(dp(2), 0, dp(2), dp(2))
-        })
-        addView(TextInputLayout(this@MainActivity).apply {
-            isHintEnabled = false
-            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
-            boxBackgroundColor = surface
-            setBoxCornerRadii(dp(16).toFloat(), dp(16).toFloat(), dp(16).toFloat(), dp(16).toFloat())
-            setBoxStrokeColor(primary)
-            addView(edit)
-        }, LinearLayout.LayoutParams(-1, dp(42)))
-    }
-    private fun pill(s: String) = TextView(this).apply {
-        text = s
-        setTextColor(primary)
-        textSize = 12f
-        setTypeface(null, Typeface.BOLD)
-        gravity = Gravity.CENTER
-        background = round(surface2, dp(18), outline)
-        setPadding(dp(12), dp(7), dp(12), dp(7))
+    private fun outlinedField(label: String, edit: EditText) = TextInputLayout(this).apply {
+        hint = label
+        placeholderText = edit.hint
+        edit.hint = null
+        boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+        boxBackgroundColor = surface
+        val corner = dp(8).toFloat()
+        setBoxCornerRadii(corner, corner, corner, corner)
+        boxStrokeColor = darkAccent
+        edit.minimumHeight = dp(56)
+        edit.setPaddingRelative(dp(14), dp(12), dp(14), dp(12))
+        addView(edit, LinearLayout.LayoutParams(-1, -2))
     }
     private fun infoLine(s: String) = TextView(this).apply {
         text = s
@@ -513,22 +496,25 @@ class MainActivity : Activity() {
         cornerRadius = radius.toFloat()
         if (stroke != null) setStroke(1, stroke)
     }
-    private fun space(h: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp(h)) }
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    private fun dirtyWatcher() = object : TextWatcher {
+    private fun dirtyWatcher(onChange: () -> Unit = {}) = object : TextWatcher {
         override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { markDirty() }
+        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+            onChange()
+            markDirty()
+        }
         override fun afterTextChanged(s: Editable?) {}
     }
     private fun markDirty() { configDirty = true; updateConfigState() }
-    private fun updateConfigState(extra: String = "") {
-        val base = if (configDirty) tr("Konfigurasi: belum disimpan, otomatis disimpan saat terhubung", "Config: unsaved, will auto-save on connect") else tr("Konfigurasi: tersimpan", "Config: saved")
-        configStateText.text = if (extra.isBlank()) base else "$base · $extra"
+    private fun updateConfigState() {
+        configStateText.text = tr("Perubahan dipakai saat VPN dihubungkan.", "Changes apply when you connect the VPN.")
+        configStateText.visibility = if (configDirty) View.VISIBLE else View.GONE
     }
     private fun saveInputs() {
         prefs.edit()
-            .putString("sni", sniInput.text?.toString().orEmpty())
+            .putString("sni", selectedSni())
+            .putBoolean("sniCustom", isCustomSni())
             .putString("endpoint", normalizedEndpoint())
             .putInt("connectPort", normalizedPort())
             .putBoolean("splitMode", splitModeSwitch.isChecked)
@@ -544,113 +530,104 @@ class MainActivity : Activity() {
             val arr = JSONArray(raw)
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
-                profiles[o.getString("name")] = Triple(o.optString("sni", "www.visa.cn"), o.optString("endpoint", "162.159.198.2"), 443)
+                val sni = o.optString("sni", DEFAULT_SNI).trim().ifBlank { DEFAULT_SNI }
+                profiles[o.getString("name")] = Profile(
+                    sni,
+                    o.optString("endpoint", "162.159.198.2"),
+                    o.optBoolean("sniCustom", sni !in SNI_PRESETS)
+                )
             }
         }
         if (profiles.isEmpty()) {
-            profiles["Utama 443"] = Triple("www.visa.cn", "162.159.198.2", 443)
+            profiles["Utama 443"] = Profile(DEFAULT_SNI, "162.159.198.2", customSni = true)
             persistProfiles()
         }
-        refreshProfileSpinner()
+        if (!profiles.containsKey(currentProfileName())) setCurrentProfileName(profiles.keys.first())
+        refreshProfileSpinner(editingProfileName)
     }
     private fun persistProfiles() {
         val arr = JSONArray()
-        profiles.forEach { (name, v) ->
-            arr.put(JSONObject().put("name", name).put("sni", v.first).put("endpoint", v.second).put("port", v.third))
+        profiles.forEach { (name, profile) ->
+            arr.put(JSONObject().put("name", name).put("sni", profile.sni).put("endpoint", profile.endpoint)
+                .put("port", normalizedPort()).put("sniCustom", profile.customSni))
         }
         prefs.edit().putString("profilesJson", arr.toString()).apply()
     }
-    private fun refreshProfileSpinner() {
+    private fun refreshProfileSpinner(preferredName: String = editingProfileName) {
         val names = profiles.keys.toList()
-        if (::profileSpinner.isInitialized) {
-            profileSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names)
-            val current = currentProfileName().takeIf { profiles.containsKey(it) } ?: names.firstOrNull().orEmpty()
-            if (current.isNotBlank()) profileSpinner.setSelection(names.indexOf(current).coerceAtLeast(0), false)
-            profileSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    val name = names.getOrNull(position) ?: return
-                    loadProfileForEditing(name)
-                }
-                override fun onNothingSelected(parent: AdapterView<*>?) {}
+        editingProfileName = preferredName.takeIf { it in profiles }
+            ?: currentProfileName().takeIf { it in profiles } ?: names.firstOrNull().orEmpty()
+        setupProfileSpinner(profileSpinner, names, editingProfileName) { name ->
+            if (name != editingProfileName) {
+                editingProfileName = name
+                applyProfileToInputs(name, persist = false)
             }
         }
         refreshHomeProfileSpinner()
     }
     private fun refreshHomeProfileSpinner() {
-        if (!::homeProfileSpinner.isInitialized) return
-        val names = profiles.keys.toList()
-        suppressProfileSelection = true
-        homeProfileSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, names)
-        val current = currentProfileName().takeIf { profiles.containsKey(it) } ?: names.firstOrNull().orEmpty()
-        if (current.isNotBlank()) homeProfileSpinner.setSelection(names.indexOf(current).coerceAtLeast(0), false)
-        suppressProfileSelection = false
-        homeProfileSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (suppressProfileSelection) return
-                val name = names.getOrNull(position) ?: return
+        setupProfileSpinner(homeProfileSpinner, profiles.keys.toList(), currentProfileName()) { name ->
+            if (name == currentProfileName()) return@setupProfileSpinner
+            if (vpnRunning) {
+                homeProfileSpinner.setSelection(profiles.keys.indexOf(currentProfileName()), false)
+                toast(tr("Putuskan VPN dulu sebelum mengganti profil", "Disconnect VPN before switching profile"))
+            } else {
                 switchHomeProfile(name)
+            }
+        }
+    }
+    private fun setupProfileSpinner(spinner: Spinner, names: List<String>, selected: String, onSelect: (String) -> Unit) {
+        spinner.onItemSelectedListener = null
+        spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, names).apply {
+            setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        }
+        val index = names.indexOf(selected)
+        if (index >= 0) spinner.setSelection(index, false)
+        spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                names.getOrNull(position)?.let(onSelect)
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
-        updateCurrentProfileUi()
     }
     private fun selectedProfileName(): String = profileSpinner.selectedItem?.toString().orEmpty()
     private fun currentProfileName(): String = prefs.getString("currentProfileName", "")?.orEmpty() ?: ""
     private fun setCurrentProfileName(name: String) { prefs.edit().putString("currentProfileName", name).apply() }
-    private fun updateCurrentProfileUi() {
-        if (!::currentProfileText.isInitialized) return
-        val name = currentProfileName().takeIf { it.isNotBlank() } ?: profiles.keys.firstOrNull().orEmpty()
-        val p = profiles[name]
-        currentProfileText.text = if (p != null) {
-            tr("Profil saat ini: $name · SNI ${p.first} · ${p.second}:${p.third}", "Current: $name · SNI ${p.first} · ${p.second}:${p.third}")
-        } else {
-            tr("Profil saat ini: tidak ada", "Current profile: none")
-        }
-    }
-    private fun syncConfigProfileSpinner(name: String) {
-        if (!::profileSpinner.isInitialized) return
-        val names = profiles.keys.toList()
-        val index = names.indexOf(name)
-        if (index >= 0) profileSpinner.setSelection(index, false)
-    }
     private fun switchHomeProfile(name: String) {
-        if (!profiles.containsKey(name)) return
-        if (vpnRunning) {
-            refreshHomeProfileSpinner()
-            toast(tr("Putuskan VPN dulu sebelum mengganti profil", "Disconnect VPN before switching profile"))
-            return
-        }
         applyProfileToInputs(name, persist = true)
         setCurrentProfileName(name)
-        syncConfigProfileSpinner(name)
-        updateCurrentProfileUi()
+        editingProfileName = name
+        profileSpinner.setSelection(profiles.keys.indexOf(name), false)
         toast(tr("Profil diganti: $name", "Profile switched: $name"))
     }
     private fun applyProfileToInputs(name: String, persist: Boolean) {
         val p = profiles[name] ?: return
-        sniInput.setText(p.first)
-        endpointInput.setText(p.second)
+        restoreSni(p.sni, p.customSni)
+        endpointInput.setText(p.endpoint)
         profileNameInput.setText(name)
         if (persist) { markDirty(); saveInputs() }
     }
     private fun saveAsNewProfile() {
+        val sni = requireSni() ?: return
         val base = profileNameInput.text?.toString().orEmpty().trim().ifBlank { normalizedEndpoint() }
         val name = uniqueProfileName(base)
-        profiles[name] = Triple(sniInput.text?.toString().orEmpty().ifBlank { "www.visa.cn" }, normalizedEndpointHost(), normalizedPort())
-        persistProfiles(); refreshProfileSpinner(); profileNameInput.setText(name); syncConfigProfileSpinner(name); toast(tr("Disimpan sebagai profil baru: $name", "Saved as new profile: $name"))
+        profiles[name] = Profile(sni, normalizedEndpointHost(), isCustomSni())
+        if (currentProfileName().isBlank()) setCurrentProfileName(name)
+        persistProfiles()
+        refreshProfileSpinner(name)
+        profileNameInput.setText(name)
+        toast(tr("Disimpan sebagai profil baru: $name", "Saved as new profile: $name"))
     }
     private fun overwriteSelectedProfile() {
         val selected = selectedProfileName()
         val name = selected.ifBlank { profileNameInput.text?.toString().orEmpty().trim() }
         if (name.isBlank()) return toast(tr("Pilih profil dulu", "Select a profile first"))
-        profiles[name] = Triple(sniInput.text?.toString().orEmpty().ifBlank { "www.visa.cn" }, normalizedEndpointHost(), normalizedPort())
-        persistProfiles(); refreshProfileSpinner(); profileNameInput.setText(name); syncConfigProfileSpinner(name)
-        if (currentProfileName() == name) { setCurrentProfileName(name); refreshHomeProfileSpinner(); updateCurrentProfileUi() }
+        val sni = requireSni() ?: return
+        profiles[name] = Profile(sni, normalizedEndpointHost(), isCustomSni())
+        persistProfiles()
+        refreshProfileSpinner(name)
+        profileNameInput.setText(name)
         toast(tr("Profil saat ini ditimpa: $name", "Current profile overwritten: $name"))
-    }
-    private fun loadProfileForEditing(name: String) {
-        if (!profiles.containsKey(name)) return
-        applyProfileToInputs(name, persist = false)
     }
     private fun uniqueProfileName(base: String): String {
         if (!profiles.containsKey(base)) return base
@@ -663,19 +640,23 @@ class MainActivity : Activity() {
         if (name.isBlank()) return
         profiles.remove(name)
         if (currentProfileName() == name) setCurrentProfileName(profiles.keys.firstOrNull().orEmpty())
-        persistProfiles(); refreshProfileSpinner(); toast(tr("Dihapus: $name", "Deleted: $name"))
+        persistProfiles()
+        refreshProfileSpinner()
+        profileNameInput.setText(editingProfileName)
+        toast(tr("Dihapus: $name", "Deleted: $name"))
     }
 
     private fun loadSavedState() {
         loadProfiles()
         val saved = prefs.getString("endpoint", "162.159.198.2:443") ?: "162.159.198.2:443"
         endpointInput.setText(parseEndpointHost(saved))
-        sniInput.setText(prefs.getString("sni", "www.visa.cn") ?: "www.visa.cn")
+        val savedSni = prefs.getString("sni", DEFAULT_SNI).orEmpty().trim().ifBlank { DEFAULT_SNI }
+        restoreSni(savedSni, prefs.getBoolean("sniCustom", false))
+        profileNameInput.setText(editingProfileName)
         selectedPackages.clear(); selectedPackages.addAll(prefs.getStringSet("selectedPackages", emptySet()) ?: emptySet())
         splitModeSwitch.isChecked = prefs.getBoolean("splitMode", false)
-        if (currentProfileName().isBlank() && profiles.isNotEmpty()) setCurrentProfileName(profiles.keys.first())
         configDirty = false
-        updateConfigState(); updateModeUi(); refreshHomeProfileSpinner(); updateCurrentProfileUi()
+        updateConfigState(); updateModeUi()
     }
 
     private fun ensureAppsLoaded() {
@@ -707,7 +688,7 @@ class MainActivity : Activity() {
         if (!appsLoaded) { appCountText.text = tr("Daftar aplikasi dimuat saat membuka Aplikasi", "App list loads when opening Apps"); return }
         appListContainer.removeAllViews()
         val visible = visibleApps()
-        visible.forEach { app -> appListContainer.addView(appRow(app), LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(5) }) }
+        visible.forEach { app -> appListContainer.addView(appRow(app), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) }) }
         appCountText.text = if (splitModeSwitch.isChecked) tr("Dipilih ${selectedPackages.size} · Ditampilkan ${visible.size}/${allApps.size}", "Selected ${selectedPackages.size} · Showing ${visible.size}/${allApps.size}") else tr("Mode global: pilihan tidak aktif · Ditampilkan ${visible.size}/${allApps.size}", "Global mode: selections inactive · Showing ${visible.size}/${allApps.size}")
         updateModeUi()
     }
@@ -735,7 +716,8 @@ class MainActivity : Activity() {
         text = "${app.label}\n${app.packageName}"
         setTextColor(textColor)
         textSize = 13f
-        background = round(if (selectedPackages.contains(app.packageName)) Color.rgb(255, 232, 212) else surface2, dp(18), outline)
+        minimumHeight = dp(52)
+        background = round(if (selectedPackages.contains(app.packageName)) primary else surface2, dp(8), outline)
         setPadding(dp(12), dp(6), dp(12), dp(6))
         isChecked = selectedPackages.contains(app.packageName)
         setOnCheckedChangeListener { _, checked ->
@@ -745,15 +727,11 @@ class MainActivity : Activity() {
     }
     private fun saveSelectedApps() { prefs.edit().putBoolean("splitMode", splitModeSwitch.isChecked).putStringSet("selectedPackages", selectedPackages.toSet()).apply() }
     private fun updateModeUi() {
-        if (!::modeValue.isInitialized) return
+        if (!::modeHint.isInitialized) return
         if (splitModeSwitch.isChecked) {
-            modeValue.text = tr("Mode Pisah", "Split Mode")
-            modeHint.text = tr("Hanya aplikasi yang dipilih di halaman “Aplikasi” yang lewat VPN; aplikasi terpilih tampil paling atas.", "Only selected apps use VPN; selected apps stay on top.")
-            if (::appSection.isInitialized) { appSection.visibility = View.VISIBLE; appSection.alpha = 1.0f }
+            modeHint.text = tr("Atur daftar di tab Aplikasi.", "Manage the list in the Apps tab.")
         } else {
-            modeValue.text = tr("Mode Global", "Global Mode")
-            modeHint.text = tr("Semua aplikasi lewat VPN; pilihan aplikasi tersimpan tapi tidak aktif.", "All apps use VPN; app selections are kept but inactive.")
-            if (::appSection.isInitialized) { appSection.visibility = View.VISIBLE; appSection.alpha = 1.0f }
+            modeHint.text = tr("Semua aplikasi memakai VPN.", "All apps use the VPN.")
         }
     }
     private fun selectedPackagesForVpn(): ArrayList<String> = ArrayList(selectedPackages.filter { it != packageName })
@@ -794,8 +772,9 @@ class MainActivity : Activity() {
     private fun refreshState(extra: String = "") {
         val state = if (vpnRunning) tr("Terhubung", "Connected") else tr("Tidak Terhubung", "Disconnected")
         statusBanner.text = state
-        statusText.text = "Status: $state${if (extra.isNotBlank()) " · $extra" else ""}"
-        statusBanner.setTextColor(if (vpnRunning) green else onPrimary)
+        statusText.text = extra
+        statusText.visibility = if (extra.isBlank()) View.GONE else View.VISIBLE
+        statusBanner.setTextColor(if (vpnRunning) green else textColor)
         connectButton.text = if (vpnRunning) tr("Putuskan VPN", "Disconnect VPN") else tr("Hubungkan VPN", "Connect VPN")
         val dark = android.content.res.ColorStateList.valueOf(darkAccent)
         connectButton.backgroundTintList = dark
@@ -806,9 +785,10 @@ class MainActivity : Activity() {
             languageIdButton.setTextColor(if (!useEnglish) Color.WHITE else onPrimary)
             languageEnButton.setTextColor(if (useEnglish) Color.WHITE else onPrimary)
         }
-        updateConfigState(extra)
+        updateConfigState()
     }
     private fun connectVpn() {
+        if (requireSni() == null) return
         saveInputs()
         if (vpnRunning) { toast(tr("Sudah berjalan", "Already running")); return }
         if (splitModeSwitch.isChecked && selectedPackagesForVpn().isEmpty()) { toast(tr("Pilih setidaknya satu aplikasi", "Select at least one app")); log(tr("Di mode pisah, pilih setidaknya satu aplikasi sebelum terhubung", "Select at least one app before connecting in split mode")); refreshState(tr("Tidak ada aplikasi dipilih", "No apps selected")); return }
@@ -834,7 +814,8 @@ class MainActivity : Activity() {
         startTunnelNow()
     }
     private fun startTunnelNow() {
-        val sni = sniInput.text?.toString().orEmpty().ifBlank { "www.visa.cn" }
+        val sni = requireSni() ?: return
+        saveInputs()
         val endpoint = normalizedEndpoint()
         val splitMode = splitModeSwitch.isChecked
         val allowedApps = if (splitMode) selectedPackagesForVpn() else arrayListOf()
