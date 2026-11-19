@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.EmbengQ" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.EmbengQ.Base" parent="Theme.Material3.Light.NoActionBar">
         <item name="colorPrimary">#00747C</item>
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="colorPrimaryContainer">#DDF5F5</item>
@@ -18,8 +18,8 @@
         <item name="android:statusBarColor">#081827</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:navigationBarColor">#FFFFFF</item>
-        <item name="android:windowLightNavigationBar">true</item>
         <item name="android:fontFamily">sans</item>
         <item name="android:textAllCaps">false</item>
     </style>
+    <style name="Theme.EmbengQ" parent="Theme.EmbengQ.Base" />
 </resources>

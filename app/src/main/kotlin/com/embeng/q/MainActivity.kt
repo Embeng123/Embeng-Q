@@ -32,11 +32,13 @@ import com.google.android.material.divider.MaterialDivider
 import usqueandroid.Usqueandroid
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : Activity() {
     companion object {
         private const val REQ_VPN = 1001
         private const val DEFAULT_SNI = "classroom.google.com"
+        private val accountRegistrationBusy = AtomicBoolean(false)
     }
     data class AppEntry(val label: String, val packageName: String)
 
@@ -54,6 +56,9 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var speedText: TextView
     private lateinit var configStateText: TextView
+    private lateinit var accountStatusText: TextView
+    private lateinit var accountButton: MaterialButton
+    private var accountMessage = ""
     private lateinit var logText: TextView
     private lateinit var modeHint: TextView
     private lateinit var splitModeSwitch: MaterialSwitch
@@ -107,6 +112,12 @@ class MainActivity : Activity() {
         refreshState()
         resetSpeedMeter()
         handler.post(speedTicker)
+        if (!hasValidRegistration() && !accountRegistrationBusy.get()) registerAccount()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateAccountUi()
     }
 
     override fun onDestroy() {
@@ -227,6 +238,31 @@ class MainActivity : Activity() {
         val content = pageContent()
         content.addView(sectionHeader(tr("Koneksi", "Connection"), tr("Edit SNI, lalu hubungkan.", "Edit your SNI, then connect.")))
         content.addView(buildConnectionSettings())
+        content.addView(sectionTitle(tr("AKUN WARP", "WARP ACCOUNT")))
+        val accountCard = card()
+        val accountBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+        }
+        accountStatusText = infoLine("")
+        accountButton = secondaryButton(tr("Buat ulang akun", "Create new account")).apply {
+            setOnClickListener {
+                if (vpnRunning || Usqueandroid.isRunning()) {
+                    toast(tr("Putuskan VPN sebelum mengganti akun", "Disconnect VPN before replacing the account"))
+                } else if (hasValidRegistration()) {
+                    android.app.AlertDialog.Builder(this@MainActivity)
+                        .setTitle(tr("Buat ulang akun WARP?", "Create a new WARP account?"))
+                        .setMessage(tr("Akun lama akan diganti setelah pendaftaran baru berhasil.", "The existing account will be replaced after registration succeeds."))
+                        .setNegativeButton(tr("Batal", "Cancel"), null)
+                        .setPositiveButton(tr("Buat ulang", "Create new")) { _, _ -> registerAccount(replace = true) }
+                        .show()
+                } else registerAccount()
+            }
+        }
+        accountBox.addView(accountStatusText)
+        accountBox.addView(accountButton, LinearLayout.LayoutParams(-1, -2))
+        accountCard.addView(accountBox)
+        content.addView(accountCard)
 
         content.addView(sectionTitle(tr("PERUTEAN", "ROUTING")))
         val modeCard = card()
@@ -597,10 +633,59 @@ class MainActivity : Activity() {
     private fun selectedPackagesForVpn(): ArrayList<String> = ArrayList(selectedPackages.filter { it != packageName })
 
     private fun hasValidRegistration(): Boolean = configFile.exists() && runCatching { Usqueandroid.isRegistered(configFile.absolutePath) }.getOrDefault(false)
-    private fun deleteInvalidConfigIfNeeded() {
-        if (!configFile.exists()) return
-        val txt = runCatching { configFile.readText() }.getOrDefault("")
-        if (txt.contains("\"private_key\": \"\"") || txt.contains("\"access_token\": \"\"") || !hasValidRegistration()) runCatching { configFile.delete() }
+    private fun updateAccountUi() {
+        val busy = accountRegistrationBusy.get()
+        accountStatusText.text = when {
+            busy -> tr("Mendaftarkan akun WARP…", "Registering WARP account…")
+            accountMessage.isNotBlank() -> accountMessage
+            hasValidRegistration() -> tr("Akun WARP siap digunakan", "WARP account is ready")
+            else -> tr("Belum ada akun. Hubungkan internet lalu coba daftar.", "No account yet. Connect to the internet and try registering.")
+        }
+        accountButton.text = if (hasValidRegistration()) tr("Buat ulang akun", "Create new account") else tr("Coba daftar akun", "Try registering")
+        accountButton.isEnabled = !busy && !vpnRunning
+        connectButton.isEnabled = !busy
+    }
+    private fun registerAccount(replace: Boolean = false, connectAfter: Boolean = false) {
+        if (!accountRegistrationBusy.compareAndSet(false, true)) {
+            toast(tr("Pendaftaran masih berjalan", "Registration is still in progress"))
+            return
+        }
+        accountMessage = ""
+        updateAccountUi()
+        executor.execute {
+            val pending = File(filesDir, "registration-pending.json")
+            val outcome = runCatching {
+                if (replace || !hasValidRegistration()) {
+                    check(!pending.exists() || pending.delete()) { "Cannot clear pending registration" }
+                    val result = Usqueandroid.register(pending.absolutePath, "Android")
+                    check(result.isNullOrBlank()) { result.orEmpty() }
+                    check(pending.exists() && Usqueandroid.isRegistered(pending.absolutePath)) {
+                        "Registration returned an invalid account"
+                    }
+                    check(pending.renameTo(configFile)) { "Cannot save registered account" }
+                }
+            }
+            pending.delete()
+            accountRegistrationBusy.set(false)
+            handler.post {
+                if (isFinishing || isDestroyed) return@post
+                accountMessage = if (outcome.isSuccess) {
+                    tr("Akun WARP siap digunakan", "WARP account is ready")
+                } else {
+                    tr("Pendaftaran gagal. Periksa internet lalu coba lagi.", "Registration failed. Check your internet connection and retry.") +
+                        if (hasValidRegistration()) tr(" Akun lama tetap tersedia.", " The existing account is still available.") else ""
+                }
+                updateAccountUi()
+                if (outcome.isSuccess && connectAfter) requestVpnAndStart()
+                if (outcome.isFailure) {
+                    android.app.AlertDialog.Builder(this@MainActivity)
+                        .setTitle(tr("Pendaftaran akun gagal", "Account registration failed"))
+                        .setMessage(outcome.exceptionOrNull()?.message ?: tr("Kesalahan tidak diketahui", "Unknown error"))
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+        }
     }
     private fun resetSpeedMeter() {
         lastRxBytes = TrafficStats.getTotalRxBytes().takeIf { it >= 0 } ?: 0L
@@ -609,6 +694,7 @@ class MainActivity : Activity() {
         if (::speedText.isInitialized) speedText.text = "↓ 0 B/s   ↑ 0 B/s"
     }
     private fun updateSpeedLine() {
+        updateAccountUi()
         if (!::speedText.isInitialized) return
         if (!vpnRunning) { speedText.text = "↓ 0 B/s   ↑ 0 B/s"; return }
         val now = System.currentTimeMillis()
@@ -638,25 +724,20 @@ class MainActivity : Activity() {
         statusIndicator.setTextColor(if (vpnRunning) green else subText)
         connectButton.contentDescription = if (vpnRunning) tr("Putuskan VPN", "Disconnect VPN") else tr("Hubungkan VPN", "Connect VPN")
         connectButton.backgroundTintList = ColorStateList.valueOf(if (vpnRunning) navy else darkAccent)
+        updateAccountUi()
         updateConfigState()
     }
     private fun connectVpn() {
+        if (accountRegistrationBusy.get()) {
+            toast(tr("Pendaftaran masih berjalan", "Registration is still in progress"))
+            return
+        }
         if (requireSni() == null) return
         saveInputs()
         if (vpnRunning) { toast(tr("Sudah berjalan", "Already running")); return }
         if (splitModeSwitch.isChecked && selectedPackagesForVpn().isEmpty()) { toast(tr("Pilih setidaknya satu aplikasi", "Select at least one app")); log(tr("Di mode pisah, pilih setidaknya satu aplikasi sebelum terhubung", "Select at least one app before connecting in split mode")); refreshState(tr("Tidak ada aplikasi dipilih", "No apps selected")); return }
         if (!hasValidRegistration()) {
-            log(tr("File registrasi valid tidak ditemukan. Mendaftar otomatis…", "No valid registration found. Registering automatically…"))
-            executor.execute {
-                try {
-                    deleteInvalidConfigIfNeeded()
-                    val result = Usqueandroid.register(configFile.absolutePath, "Android")
-                    handler.post {
-                        if (result.isNullOrBlank() && hasValidRegistration()) { log(tr("Pendaftaran berhasil. Meminta izin VPN…", "Registered. Requesting VPN permission…")); requestVpnAndStart() }
-                        else { log("Pendaftaran gagal: ${result.ifNullOrBlank(tr("Kesalahan tidak diketahui", "Unknown error"))}"); refreshState(tr("Pendaftaran gagal", "Registration failed")) }
-                    }
-                } catch (e: Exception) { handler.post { log("Galat pendaftaran: ${e.message ?: e.javaClass.simpleName}"); refreshState(tr("Galat pendaftaran", "Registration error")) } }
-            }
+            registerAccount(connectAfter = true)
             return
         }
         requestVpnAndStart()
